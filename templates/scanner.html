@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Tarama{% endblock %}
+
+{% block content %}
+<div x-data="scannerPage()">
+    <div class="mb-4">
+        <h2 class="text-2xl font-bold mb-1">🔍 Tarama</h2>
+        <p class="text-white/60 text-sm">Tüm BIST'i tara, fırsatları yakala</p>
+    </div>
+    
+    <!-- Tarama Butonu -->
+    <button @click="startScan()" :disabled="scanning"
+            class="w-full gradient-purple rounded-2xl p-6 font-bold shadow-lg mb-4 disabled:opacity-50">
+        <template x-if="!scanning">
+            <div>
+                <i class="fas fa-search text-3xl mb-2 block"></i>
+                <div class="text-lg">TARAMAYI BAŞLAT</div>
+                <div class="text-xs opacity-70 mt-1">~530 hisse, 1-2 dakika</div>
+            </div>
+        </template>
+        <template x-if="scanning">
+            <div>
+                <i class="fas fa-spinner fa-spin text-3xl mb-2 block"></i>
+                <div class="text-lg">Taranıyor...</div>
+                <div class="text-xs opacity-70 mt-1">Lütfen bekleyin</div>
+            </div>
+        </template>
+    </button>
+    
+    <!-- Sonuçlar -->
+    <template x-if="results.length > 0">
+        <div>
+            <div class="glass rounded-2xl p-4 mb-3">
+                <div class="text-center">
+                    <div class="text-3xl font-bold text-green-400" x-text="results.length"></div>
+                    <div class="text-sm text-white/60">güçlü sinyal bulundu</div>
+                </div>
+            </div>
+            
+            <div class="space-y-3">
+                <template x-for="(signal, index) in results" :key="index">
+                    <a :href="'/stock/' + signal.symbol" class="block glass rounded-2xl p-4">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                <div class="w-12 h-12 rounded-xl flex items-center justify-center text-xl"
+                                     :class="getGradient(signal.score)">
+                                    <span x-text="signal.emoji"></span>
+                                </div>
+                                <div>
+                                    <div class="font-bold" x-text="signal.symbol"></div>
+                                    <div class="text-white/60 text-sm" x-text="signal.current_price.toFixed(2) + ' TL'"></div>
+                                </div>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-2xl font-bold" :class="getColor(signal.score)" x-text="signal.score"></div>
+                                <div class="text-xs text-white/50">/100</div>
+                            </div>
+                        </div>
+                    </a>
+                </template>
+            </div>
+        </div>
+    </template>
+</div>
+
+<script>
+function scannerPage() {
+    return {
+        scanning: false,
+        results: [],
+        
+        async startScan() {
+            this.scanning = true;
+            this.results = [];
+            try {
+                const res = await fetch('/api/scan?min_score=65');
+                const data = await res.json();
+                this.results = data.signals;
+            } catch (e) {
+                alert('Tarama hatası: ' + e.message);
+            } finally {
+                this.scanning = false;
+            }
+        },
+        getColor(s) {
+            if (s >= 85) return 'text-green-400';
+            if (s >= 75) return 'text-emerald-400';
+            if (s >= 65) return 'text-purple-400';
+            return 'text-yellow-400';
+        },
+        getGradient(s) {
+            if (s >= 75) return 'gradient-green';
+            if (s >= 65) return 'gradient-purple';
+            return 'gradient-yellow';
+        }
+    }
+}
+</script>
+{% endblock %}

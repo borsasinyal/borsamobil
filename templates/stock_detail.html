@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}{{ symbol }}{% endblock %}
+{% block content %}
+<div x-data="stockDetail('{{ symbol }}')" x-init="load()">
+    <div class="mb-4 flex items-center gap-2">
+        <a href="/" class="w-10 h-10 rounded-xl glass flex items-center justify-center">
+            <i class="fas fa-arrow-left"></i>
+        </a>
+        <div>
+            <h2 class="text-2xl font-bold" x-text="symbol"></h2>
+            <p class="text-white/60 text-sm">Detaylı Analiz</p>
+        </div>
+    </div>
+    
+    <template x-if="loading">
+        <div class="glass rounded-2xl p-8 text-center">
+            <i class="fas fa-spinner fa-spin text-3xl text-purple-400"></i>
+        </div>
+    </template>
+    
+    <template x-if="!loading && signal">
+        <div class="space-y-4">
+            <!-- Fiyat ve Skor -->
+            <div class="glass rounded-2xl p-6 text-center">
+                <div class="text-4xl font-bold mb-2" x-text="signal.current_price.toFixed(2) + ' TL'"></div>
+                <div class="text-6xl font-bold mb-2" :class="getColor(signal.score)" x-text="signal.score"></div>
+                <div class="text-white/60" x-text="signal.label"></div>
+            </div>
+            
+            <!-- İşlem Planı -->
+            <div class="glass rounded-2xl p-4">
+                <h3 class="font-bold mb-3">💼 İşlem Planı</h3>
+                <div class="space-y-2 text-sm">
+                    <div class="flex justify-between">
+                        <span class="text-white/60">📥 Giriş:</span>
+                        <span class="font-bold" x-text="signal.targets.entry.toFixed(2) + ' TL'"></span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-white/60">🎯 Hedef 1:</span>
+                        <span class="font-bold text-green-400" x-text="signal.targets.target_1.toFixed(2) + ' TL (+' + signal.targets.target_1_pct + '%)'"></span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-white/60">🎯 Hedef 2:</span>
+                        <span class="font-bold text-green-400" x-text="signal.targets.target_2.toFixed(2) + ' TL (+' + signal.targets.target_2_pct + '%)'"></span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-white/60">🛑 Stop:</span>
+                        <span class="font-bold text-red-400" x-text="signal.targets.stop_loss.toFixed(2) + ' TL (-' + signal.targets.stop_pct + '%)'"></span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Sebepler -->
+            <div class="glass rounded-2xl p-4">
+                <h3 class="font-bold mb-3">📊 Alma Sebepleri</h3>
+                <div class="space-y-3">
+                    <template x-for="reason in signal.reasons" :key="reason.title">
+                        <div class="bg-white/5 rounded-xl p-3">
+                            <div class="flex items-center gap-2 mb-1">
+                                <span x-text="reason.icon"></span>
+                                <span class="font-semibold" x-text="reason.title"></span>
+                            </div>
+                            <div class="text-sm text-white/60" x-text="reason.detail"></div>
+                            <div class="text-xs text-purple-400 mt-1">→ <span x-text="reason.meaning"></span></div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+            
+            <!-- Puan Dağılımı -->
+            <div class="glass rounded-2xl p-4">
+                <h3 class="font-bold mb-3">📈 Puan Dağılımı</h3>
+                <div class="space-y-2">
+                    <template x-for="(item, key) in signal.breakdown">
+                        <div>
+                            <div class="flex justify-between text-sm mb-1">
+                                <span class="text-white/70 capitalize" x-text="key"></span>
+                                <span class="font-bold" x-text="item.score + '/' + item.max"></span>
+                            </div>
+                            <div class="w-full bg-white/10 rounded-full h-2">
+                                <div class="h-full rounded-full gradient-purple" 
+                                     :style="'width: ' + (item.score/item.max*100) + '%'"></div>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+    </template>
+</div>
+
+<script>
+function stockDetail(symbol) {
+    return {
+        symbol: symbol,
+        loading: true,
+        signal: null,
+        
+        async load() {
+            try {
+                const res = await fetch('/api/stock/' + this.symbol);
+                const data = await res.json();
+                this.signal = data.signal;
+            } catch (e) {
+                console.error(e);
+            } finally {
+                this.loading = false;
+            }
+        },
+        getColor(s) {
+            if (s >= 85) return 'text-green-400';
+            if (s >= 75) return 'text-emerald-400';
+            if (s >= 65) return 'text-purple-400';
+            return 'text-yellow-400';
+        }
+    }
+}
+</script>
+{% endblock %}

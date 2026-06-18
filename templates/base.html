@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#6C5CE7">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>{% block title %}Borsa Sinyal{% endblock %}</title>
+    
+    <!-- PWA -->
+    <link rel="manifest" href="/manifest.json">
+    <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
+    
+    <!-- TailwindCSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Alpine.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <style>
+        * { font-family: 'Inter', sans-serif; }
+        body { 
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            color: white;
+        }
+        .glass {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .gradient-purple { background: linear-gradient(135deg, #6C5CE7, #a55eea); }
+        .gradient-green { background: linear-gradient(135deg, #00B894, #00cec9); }
+        .gradient-red { background: linear-gradient(135deg, #FF6B6B, #ee5a52); }
+        .gradient-blue { background: linear-gradient(135deg, #74B9FF, #0984e3); }
+        .gradient-yellow { background: linear-gradient(135deg, #FDCB6E, #f39c12); }
+        
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: rgba(255,255,255,0.05); }
+        ::-webkit-scrollbar-thumb { background: rgba(108,92,231,0.5); border-radius: 10px; }
+        
+        /* Animations */
+        @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 0 20px rgba(108, 92, 231, 0.3); }
+            50% { box-shadow: 0 0 40px rgba(108, 92, 231, 0.6); }
+        }
+        .glow { animation: pulse-glow 2s infinite; }
+        
+        @keyframes slide-up {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .slide-up { animation: slide-up 0.4s ease-out; }
+        
+        /* No tap highlight */
+        * { -webkit-tap-highlight-color: transparent; }
+        
+        /* Bottom safe area */
+        .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+    </style>
+    
+    {% block head %}{% endblock %}
+</head>
+<body class="pb-24">
+    
+    <!-- Top Bar -->
+    <header class="sticky top-0 z-50 glass border-b border-white/10">
+        <div class="flex items-center justify-between px-4 py-3">
+            <div class="flex items-center gap-2">
+                <div class="w-9 h-9 rounded-xl gradient-purple flex items-center justify-center">
+                    <i class="fas fa-chart-line text-white"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg">BorsaSinyal</h1>
+                    <p class="text-xs text-white/50">BIST • Day Trade</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-3">
+                <button class="w-10 h-10 rounded-xl glass flex items-center justify-center">
+                    <i class="fas fa-bell text-white/70"></i>
+                </button>
+                <a href="/settings" class="w-10 h-10 rounded-xl glass flex items-center justify-center">
+                    <i class="fas fa-cog text-white/70"></i>
+                </a>
+            </div>
+        </div>
+    </header>
+    
+    <!-- Main Content -->
+    <main class="px-4 py-4">
+        {% block content %}{% endblock %}
+    </main>
+    
+    <!-- Bottom Navigation -->
+    <nav class="fixed bottom-0 left-0 right-0 z-50 glass border-t border-white/10 pb-safe">
+        <div class="flex justify-around items-center py-2">
+            <a href="/" class="flex flex-col items-center gap-1 px-4 py-2 rounded-xl {% if request.path == '/' %}bg-white/10{% endif %}">
+                <i class="fas fa-home {% if request.path == '/' %}text-purple-400{% else %}text-white/50{% endif %}"></i>
+                <span class="text-xs {% if request.path == '/' %}text-purple-400 font-semibold{% else %}text-white/50{% endif %}">Ana</span>
+            </a>
+            <a href="/scanner" class="flex flex-col items-center gap-1 px-4 py-2 rounded-xl {% if request.path == '/scanner' %}bg-white/10{% endif %}">
+                <i class="fas fa-search {% if request.path == '/scanner' %}text-purple-400{% else %}text-white/50{% endif %}"></i>
+                <span class="text-xs {% if request.path == '/scanner' %}text-purple-400 font-semibold{% else %}text-white/50{% endif %}">Tarama</span>
+            </a>
+            <a href="/signals" class="flex flex-col items-center gap-1 px-4 py-2 rounded-xl {% if request.path == '/signals' %}bg-white/10{% endif %}">
+                <i class="fas fa-bolt {% if request.path == '/signals' %}text-purple-400{% else %}text-white/50{% endif %}"></i>
+                <span class="text-xs {% if request.path == '/signals' %}text-purple-400 font-semibold{% else %}text-white/50{% endif %}">Sinyal</span>
+            </a>
+            <a href="/portfolio" class="flex flex-col items-center gap-1 px-4 py-2 rounded-xl {% if request.path == '/portfolio' %}bg-white/10{% endif %}">
+                <i class="fas fa-briefcase {% if request.path == '/portfolio' %}text-purple-400{% else %}text-white/50{% endif %}"></i>
+                <span class="text-xs {% if request.path == '/portfolio' %}text-purple-400 font-semibold{% else %}text-white/50{% endif %}">Portföy</span>
+            </a>
+        </div>
+    </nav>
+    
+    <!-- PWA Service Worker -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js')
+                .then(reg => console.log('✅ PWA Service Worker aktif'))
+                .catch(err => console.log('❌ SW hatası:', err));
+        }
+    </script>
+    
+    {% block scripts %}{% endblock %}
+</body>
+</html>

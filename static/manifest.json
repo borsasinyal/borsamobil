@@ -1,0 +1,22 @@
+{
+    "name": "Borsa Sinyal",
+    "short_name": "BorsaSinyal",
+    "description": "BIST Day Trading Sinyalleri",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#1a1a2e",
+    "theme_color": "#6C5CE7",
+    "orientation": "portrait",
+    "icons": [
+        {
+            "src": "https://api.iconify.design/fluent-emoji/chart-increasing.svg?width=192",
+            "sizes": "192x192",
+            "type": "image/svg+xml"
+        },
+        {
+            "src": "https://api.iconify.design/fluent-emoji/chart-increasing.svg?width=512",
+            "sizes": "512x512",
+            "type": "image/svg+xml"
+        }
+    ]
+}
