@@ -1,15 +1,17 @@
 """
 Borsa Sinyal Uygulaması - Ayarlar
-TÜM BIST HİSSELERİ
+TÜM BIST HİSSELERİ (Aktif olanlar)
 """
 
-# TÜM BIST hisseleri (Tüm pazarlar: Yıldız, Ana, Alt, Yakın İzleme)
+import os
+
+# TÜM BIST hisseleri - Sadece AKTİF olanlar
 TUM_BIST = [
     "A1CAP", "ACSEL", "ADEL", "ADESE", "ADGYO", "AEFES", "AFYON", "AGESA",
     "AGHOL", "AGROT", "AHGAZ", "AKBNK", "AKCNS", "AKENR", "AKFGY", "AKFYE",
     "AKGRT", "AKMGY", "AKSA", "AKSEN", "AKSGY", "AKSUE", "AKYHO", "ALARK",
     "ALBRK", "ALCAR", "ALCTL", "ALFAS", "ALGYO", "ALKA", "ALKIM", "ALKLC",
-    "ALMAD", "ALTNY", "ALVES", "ANELE", "ANGEN", "ANHYT", "ANSGR", "ARASE",
+    "ALTNY", "ALVES", "ANELE", "ANGEN", "ANHYT", "ANSGR", "ARASE",
     "ARCLK", "ARDYZ", "ARENA", "ARMGD", "ARSAN", "ARTMS", "ARZUM", "ASELS",
     "ASGYO", "ASTOR", "ASUZU", "ATAGY", "ATAKP", "ATATP", "ATEKS", "ATLAS",
     "ATSYH", "AVGYO", "AVHOL", "AVOD", "AVPGY", "AVTUR", "AYCES", "AYDEM",
@@ -21,11 +23,11 @@ TUM_BIST = [
     "BRYAT", "BSOKE", "BTCIM", "BUCIM", "BULGS", "BURCE", "BURVA", "BVSAN",
     "BYDNR", "CANTE", "CASA", "CATES", "CCOLA", "CELHA", "CEMAS", "CEMTS",
     "CEOEM", "CIMSA", "CLEBI", "CMBTN", "CMENT", "CONSE", "COSMO", "CRDFA",
-    "CRFSA", "CUSAN", "CVKMD", "CWENE", "DAGHL", "DAGI", "DAPGM", "DARDL",
+    "CRFSA", "CUSAN", "CVKMD", "CWENE", "DAGI", "DAPGM", "DARDL",
     "DCTTR", "DENGE", "DERHL", "DERIM", "DESA", "DESPC", "DEVA", "DGATE",
-    "DGGYO", "DGNMO", "DIRIT", "DITAS", "DMSAS", "DNISI", "DOAS", "DOBUR",
+    "DGGYO", "DGNMO", "DIRIT", "DITAS", "DMSAS", "DNISI", "DOAS",
     "DOCO", "DOFER", "DOGUB", "DOHOL", "DOKTA", "DURDO", "DYOBY", "DZGYO",
-    "EBEBK", "ECILC", "ECZYT", "EDATA", "EDIP", "EFORC", "EGEEN", "EGEPO",
+    "EBEBK", "ECILC", "ECZYT", "EDATA", "EDIP", "EGEEN", "EGEPO",
     "EGGUB", "EGPRO", "EGSER", "EKGYO", "EKIZ", "EKOS", "EKSUN", "ELITE",
     "EMKEL", "EMNIS", "ENERY", "ENJSA", "ENKAI", "ENSRI", "ENTRA", "EPLAS",
     "ERBOS", "ERCB", "EREGL", "ERSU", "ESCAR", "ESCOM", "ESEN", "ETILR",
@@ -79,30 +81,27 @@ TUM_BIST = [
     "ZEDUR", "ZOREN", "ZRGYO"
 ]
 
-# Yahoo Finance için .IS uzantısı eklenmiş liste
+# Yahoo Finance için .IS uzantısı
 BIST_SYMBOLS = [f"{symbol}.IS" for symbol in TUM_BIST]
 
-# Bilgi
 print(f"📊 Toplam {len(TUM_BIST)} BIST hissesi yüklendi")
 
-# Veritabanı ayarları
+# Veritabanı
 DATABASE_NAME = "borsa_sinyal.db"
 
-# Tarama ayarları
-SCAN_INTERVAL_MINUTES = 15  # Her 15 dakikada bir tarama
-HISTORICAL_DAYS = 365  # 1 yıllık geçmiş veri
+# Tarama
+SCAN_INTERVAL_MINUTES = 15
+HISTORICAL_DAYS = 365
 
-# Sinyal eşik değerleri
-RSI_OVERSOLD = 30      # Aşırı satım
-RSI_OVERBOUGHT = 70    # Aşırı alım
-MIN_SIGNAL_SCORE = 65  # Minimum sinyal skoru (0-100)
+# Sinyal eşikleri
+RSI_OVERSOLD = 30
+RSI_OVERBOUGHT = 70
+MIN_SIGNAL_SCORE = 65
 
-# Borsa saatleri (Türkiye)
+# Borsa saatleri
 MARKET_OPEN_HOUR = 10
 MARKET_CLOSE_HOUR = 18
 
-
-# Telegram (bulutta environment variable'dan, yerelde direkt)
-import os
-TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '8979052471:AAExZQmB5KTJpuIsMBnN-c4o1Rlx02V10Ro')
-TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID', '982314149')
+# Telegram (environment variable'dan veya boş)
+TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '')
+TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID', '')
