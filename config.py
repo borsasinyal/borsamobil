@@ -1,6 +1,6 @@
 """
 Borsa Sinyal Uygulaması - Ayarlar
-TÜM BIST HİSSELERİ (Aktif olanlar)
+TÜM BIST HİSSELERİ (Aktif olanlar - delisted hariç)
 """
 
 import os
@@ -102,6 +102,10 @@ MIN_SIGNAL_SCORE = 65
 MARKET_OPEN_HOUR = 10
 MARKET_CLOSE_HOUR = 18
 
-# Telegram (environment variable'dan veya boş)
+# ════════════════════════════════════════════════════════════
+# TELEGRAM - GitHub Secrets'tan otomatik okunur
+# ════════════════════════════════════════════════════════════
+
 TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '')
+
 TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID', '')
