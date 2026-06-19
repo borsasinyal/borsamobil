@@ -1,0 +1,86 @@
+name: Borsa Sinyal Bot
+
+on:
+  schedule:
+    - cron: '45 6 * * 1-5'
+    - cron: '15 7 * * 1-5'
+    - cron: '0 8 * * 1-5'
+    - cron: '0 9 * * 1-5'
+    - cron: '0 10 * * 1-5'
+    - cron: '0 11 * * 1-5'
+    - cron: '0 12 * * 1-5'
+    - cron: '0 13 * * 1-5'
+    - cron: '0 14 * * 1-5'
+    - cron: '15 15 * * 1-5'
+  
+  workflow_dispatch:
+    inputs:
+      job_type:
+        description: 'Hangi görev?'
+        required: true
+        default: 'full_scan'
+        type: choice
+        options:
+          - morning_preparation
+          - premarket_report
+          - market_open_scan
+          - full_scan
+          - quick_scan
+          - strategy_scan
+          - end_of_day_report
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Repo indir
+        uses: actions/checkout@v4
+      
+      - name: Python kur
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      
+      - name: Kutuphaneleri yukle
+        run: |
+          pip install --upgrade pip
+          pip install flask yfinance pandas numpy python-telegram-bot apscheduler requests
+      
+      - name: Veritabani baslat
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python database.py
+      
+      - name: Otomatik gorev (schedule)
+        if: github.event_name == 'schedule'
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          HOUR=$(date -u +%H)
+          MINUTE=$(date -u +%M)
+          
+          if [ "$HOUR" = "06" ] && [ "$MINUTE" = "45" ]; then
+            python -c "from services.scheduler import job_morning_preparation; job_morning_preparation()"
+          elif [ "$HOUR" = "07" ] && [ "$MINUTE" = "15" ]; then
+            python -c "from services.scheduler import job_market_open_scan; job_market_open_scan()"
+          elif [ "$HOUR" = "11" ]; then
+            python -c "from services.scheduler import job_strategy_scan; job_strategy_scan()"
+          elif [ "$HOUR" = "15" ] && [ "$MINUTE" = "15" ]; then
+            python -c "from services.scheduler import job_end_of_day_report; job_end_of_day_report()"
+          else
+            python -c "from services.scheduler import job_full_scan; job_full_scan()"
+          fi
+      
+      - name: Manuel gorev
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python -c "from services.scheduler import job_${{ github.event.inputs.job_type }}; job_${{ github.event.inputs.job_type }}()"
+      
+      - name: Tamamlandi
+        run: echo "Gorev tamamlandi"
