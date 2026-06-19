@@ -32,6 +32,7 @@ on:
 jobs:
   scan:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     
     steps:
       - name: Repo indir
@@ -41,6 +42,12 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
+      
+      - name: Pip cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
       
       - name: Kutuphaneleri yukle
         run: |
@@ -52,6 +59,13 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python database.py
+      
+      - name: Gunluk veriyi cek (TUM BIST)
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python -c "from services.data_fetcher import fetch_all_daily; from config import BIST_SYMBOLS; fetch_all_daily(symbols_list=BIST_SYMBOLS, delay=0.05)"
       
       - name: Otomatik gorev (schedule)
         if: github.event_name == 'schedule'
