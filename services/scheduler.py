@@ -126,7 +126,7 @@ def job_market_open_scan():
 ⏰ {datetime.now().strftime('%H:%M')}""")
             return
         
-        new_signals = filter_new_signals(signals, hours=12)
+        new_signals = filter_new_signals(signals, hours=0)  # 0 = spam koruması yok
         
         if not new_signals:
             send_message(f"📊 {len(signals)} sinyal var (zaten gönderildi)")
@@ -157,7 +157,7 @@ def job_quick_scan():
 <i>Sonraki taramayı bekleyin</i>""")
             return
         
-        new_signals = filter_new_signals(signals, hours=2)
+        new_signals = filter_new_signals(signals, hours=0)  # 0 = spam koruması yok
         
         if not new_signals:
             send_message(f"""⚡ <b>HIZLI TARAMA BİTTİ</b>
@@ -196,7 +196,7 @@ def job_full_scan():
 <i>Sonraki taramayı bekleyin</i>""")
             return
         
-        new_signals = filter_new_signals(signals, hours=3)
+        new_signals = filter_new_signals(signals, hours=0)  # 0 = spam koruması yok
         
         if not new_signals:
             send_message(f"""🔍 <b>TAM TARAMA BİTTİ</b>
