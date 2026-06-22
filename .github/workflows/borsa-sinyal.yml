@@ -1,18 +1,6 @@
 name: Borsa Sinyal Bot
 
 on:
-  schedule:
-    - cron: '45 6 * * 1-5'
-    - cron: '15 7 * * 1-5'
-    - cron: '0 8 * * 1-5'
-    - cron: '0 9 * * 1-5'
-    - cron: '0 10 * * 1-5'
-    - cron: '0 11 * * 1-5'
-    - cron: '0 12 * * 1-5'
-    - cron: '0 13 * * 1-5'
-    - cron: '0 14 * * 1-5'
-    - cron: '15 15 * * 1-5'
-  
   workflow_dispatch:
     inputs:
       job_type:
@@ -60,36 +48,14 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python database.py
       
-      - name: Gunluk veriyi cek (TUM BIST)
+      - name: Gunluk veriyi cek
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           python -c "from services.data_fetcher import fetch_all_daily; from config import BIST_SYMBOLS; fetch_all_daily(symbols_list=BIST_SYMBOLS, delay=0.05)"
       
-      - name: Otomatik gorev (schedule)
-        if: github.event_name == 'schedule'
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: |
-          HOUR=$(date -u +%H)
-          MINUTE=$(date -u +%M)
-          
-          if [ "$HOUR" = "06" ] && [ "$MINUTE" = "45" ]; then
-            python -c "from services.scheduler import job_morning_preparation; job_morning_preparation()"
-          elif [ "$HOUR" = "07" ] && [ "$MINUTE" = "15" ]; then
-            python -c "from services.scheduler import job_market_open_scan; job_market_open_scan()"
-          elif [ "$HOUR" = "11" ]; then
-            python -c "from services.scheduler import job_strategy_scan; job_strategy_scan()"
-          elif [ "$HOUR" = "15" ] && [ "$MINUTE" = "15" ]; then
-            python -c "from services.scheduler import job_end_of_day_report; job_end_of_day_report()"
-          else
-            python -c "from services.scheduler import job_full_scan; job_full_scan()"
-          fi
-      
       - name: Manuel gorev
-        if: github.event_name == 'workflow_dispatch'
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
