@@ -1,13 +1,13 @@
 """
-Profesyonel Otomatik Zamanlayıcı - 7/24 Çalışma Sistemi
-Her durumda mesaj gönderir
+Otomatik Zamanlayıcı - SPAM KORUMASI KAPALI
+Her tarama yeni sinyal kartları gönderir
 """
 
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from datetime import datetime, time as dt_time
+from datetime import datetime
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 
@@ -16,7 +16,6 @@ from database import get_connection
 from services.data_fetcher import fetch_all_daily, fetch_all_15m
 from services.scanner import (
     scan_all_stocks, 
-    filter_new_signals,
     scan_momentum_strategy,
     scan_breakout_strategy
 )
@@ -27,18 +26,13 @@ def is_weekday():
     return datetime.now().weekday() < 5
 
 
-def is_market_open():
-    return True
-
-
 def log_event(message):
-    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    print(f"[{timestamp}] {message}")
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] {message}")
 
 
-# ════════════════════════════════════════════════════════════
-# JOB FONKSİYONLARI - HER DURUMDA MESAJ GÖNDERİR
-# ════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════
+# 🌅 SABAH HAZIRLIK
+# ════════════════════════════════════════════
 
 def job_morning_preparation():
     log_event("🌅 SABAH HAZIRLIK")
@@ -64,17 +58,21 @@ def job_morning_preparation():
 
 <i>Bugün güzel kazançlar dilerim 💪</i>""")
     except Exception as e:
-        send_message(f"❌ <b>Sabah hazırlık hatası</b>\n<code>{str(e)[:200]}</code>")
+        send_message(f"❌ <b>Hata</b>\n<code>{str(e)[:200]}</code>")
 
+
+# ════════════════════════════════════════════
+# 📊 PRE-MARKET
+# ════════════════════════════════════════════
 
 def job_premarket_report():
     log_event("📊 PRE-MARKET")
     
-    send_message(f"""📊 <b>PRE-MARKET TARAMASI BAŞLADI</b>
+    send_message(f"""📊 <b>PRE-MARKET BAŞLADI</b>
 ⏰ {datetime.now().strftime('%H:%M')}""")
     
     if not is_weekday():
-        send_message("⏸️ Hafta sonu - atlandı")
+        send_message("⏸️ Hafta sonu")
         return
     
     try:
@@ -91,6 +89,7 @@ def job_premarket_report():
             for i, s in enumerate(top_5, 1):
                 msg += f"{i}. <b>{s['symbol']}</b> - {s['current_price']:.2f} TL\n"
                 msg += f"   {s['emoji']} Skor: {s['score']}/100\n\n"
+            
             send_message(msg)
         else:
             send_message(f"""🌅 <b>PRE-MARKET BİTTİ</b>
@@ -99,8 +98,12 @@ def job_premarket_report():
 ⚠️ Şu an dikkat çeken hisse yok
 ⏰ {datetime.now().strftime('%H:%M')}""")
     except Exception as e:
-        send_message(f"❌ <b>Pre-market hatası</b>\n<code>{str(e)[:200]}</code>")
+        send_message(f"❌ <b>Hata</b>\n<code>{str(e)[:200]}</code>")
 
+
+# ════════════════════════════════════════════
+# 🔔 AÇILIŞ TARAMASI
+# ════════════════════════════════════════════
 
 def job_market_open_scan():
     log_event("🔔 AÇILIŞ")
@@ -122,21 +125,25 @@ def job_market_open_scan():
             send_message(f"""🔔 <b>AÇILIŞ TARAMASI BİTTİ</b>
 ━━━━━━━━━━━━━━━━━━━━━━━
 📊 567 hisse tarandı
-⚠️ Şu an güçlü sinyal yok
+⚠️ Kriterlere uygun hisse bulunamadı
 ⏰ {datetime.now().strftime('%H:%M')}""")
             return
         
-        new_signals = filter_new_signals(signals, hours=0)  # 0 = spam koruması yok
+        # SPAM KORUMASI YOK - HER ZAMAN GÖNDER
+        send_message(f"""🔔 <b>AÇILIŞ - {len(signals)} SİNYAL!</b>
+━━━━━━━━━━━━━━━━━━━━━━━
+🔥 Güçlü hisseler radara girdi
+📩 Sinyaller geliyor...""")
         
-        if not new_signals:
-            send_message(f"📊 {len(signals)} sinyal var (zaten gönderildi)")
-            return
+        send_multiple_signals(signals, max_signals=5)
         
-        send_message(f"🔔 <b>AÇILIŞ - {len(new_signals)} SİNYAL!</b>")
-        send_multiple_signals(new_signals, max_signals=5)
     except Exception as e:
-        send_message(f"❌ <b>Açılış hatası</b>\n<code>{str(e)[:200]}</code>")
+        send_message(f"❌ <b>Hata</b>\n<code>{str(e)[:200]}</code>")
 
+
+# ════════════════════════════════════════════
+# ⚡ HIZLI TARAMA
+# ════════════════════════════════════════════
 
 def job_quick_scan():
     log_event("⚡ HIZLI TARAMA")
@@ -151,27 +158,24 @@ def job_quick_scan():
             send_message(f"""⚡ <b>HIZLI TARAMA BİTTİ</b>
 ━━━━━━━━━━━━━━━━━━━━━━━
 📊 Tarama tamamlandı
-⚠️ Şu an güçlü sinyal yok (skor 70+)
-⏰ {datetime.now().strftime('%H:%M')}
-
-<i>Sonraki taramayı bekleyin</i>""")
-            return
-        
-        new_signals = filter_new_signals(signals, hours=0)  # 0 = spam koruması yok
-        
-        if not new_signals:
-            send_message(f"""⚡ <b>HIZLI TARAMA BİTTİ</b>
-━━━━━━━━━━━━━━━━━━━━━━━
-📊 {len(signals)} sinyal var (zaten gönderildi)
+⚠️ Kriterlere uygun hisse bulunamadı (70+)
 ⏰ {datetime.now().strftime('%H:%M')}""")
             return
         
-        send_message(f"""⚡ <b>{len(new_signals)} YENİ SİNYAL!</b>
+        # SPAM KORUMASI YOK - HER ZAMAN GÖNDER
+        send_message(f"""⚡ <b>{len(signals)} SİNYAL BULUNDU!</b>
+━━━━━━━━━━━━━━━━━━━━━━━
 📩 Sinyaller geliyor...""")
-        send_multiple_signals(new_signals, max_signals=3)
+        
+        send_multiple_signals(signals, max_signals=3)
+        
     except Exception as e:
-        send_message(f"❌ <b>Hızlı tarama hatası</b>\n<code>{str(e)[:200]}</code>")
+        send_message(f"❌ <b>Hata</b>\n<code>{str(e)[:200]}</code>")
 
+
+# ════════════════════════════════════════════
+# 🔍 TAM TARAMA
+# ════════════════════════════════════════════
 
 def job_full_scan():
     log_event("🔍 TAM TARAMA")
@@ -179,9 +183,7 @@ def job_full_scan():
     send_message(f"""🔍 <b>TAM TARAMA BAŞLADI</b>
 ━━━━━━━━━━━━━━━━━━━━━━━
 ⏰ {datetime.now().strftime('%H:%M')}
-📊 567 hisse taranıyor...
-
-<i>Bu işlem birkaç dakika sürer</i>""")
+📊 567 hisse taranıyor...""")
     
     try:
         signals = scan_all_stocks(min_score=65, save_to_db=True, verbose=False)
@@ -190,33 +192,31 @@ def job_full_scan():
             send_message(f"""🔍 <b>TAM TARAMA BİTTİ</b>
 ━━━━━━━━━━━━━━━━━━━━━━━
 📊 567 hisse tarandı
-⚠️ Şu an güçlü sinyal yok (skor 65+)
-⏰ {datetime.now().strftime('%H:%M')}
-
-<i>Sonraki taramayı bekleyin</i>""")
-            return
-        
-        new_signals = filter_new_signals(signals, hours=0)  # 0 = spam koruması yok
-        
-        if not new_signals:
-            send_message(f"""🔍 <b>TAM TARAMA BİTTİ</b>
-━━━━━━━━━━━━━━━━━━━━━━━
-📊 {len(signals)} sinyal var (zaten gönderildi)
+⚠️ Kriterlere uygun hisse bulunamadı (65+)
 ⏰ {datetime.now().strftime('%H:%M')}""")
             return
         
-        send_message(f"""🔍 <b>{len(new_signals)} YENİ SİNYAL!</b>
-🔥 Güçlü sinyaller bulundu
-📩 Sinyaller geliyor...""")
-        send_multiple_signals(new_signals, max_signals=5)
+        # SPAM KORUMASI YOK - HER ZAMAN GÖNDER
+        send_message(f"""🔍 <b>{len(signals)} SİNYAL BULUNDU!</b>
+━━━━━━━━━━━━━━━━━━━━━━━
+🔥 Güçlü hisseler radara girdi
+📩 Sinyal kartları geliyor...""")
+        
+        send_multiple_signals(signals, max_signals=5)
+        
     except Exception as e:
-        send_message(f"❌ <b>Tam tarama hatası</b>\n<code>{str(e)[:200]}</code>")
+        send_message(f"❌ <b>Hata</b>\n<code>{str(e)[:200]}</code>")
 
+
+# ════════════════════════════════════════════
+# 💎 STRATEJİ TARAMASI
+# ════════════════════════════════════════════
 
 def job_strategy_scan():
     log_event("💎 STRATEJİ")
     
     send_message(f"""💎 <b>STRATEJİ TARAMASI BAŞLADI</b>
+━━━━━━━━━━━━━━━━━━━━━━━
 ⏰ {datetime.now().strftime('%H:%M')}""")
     
     try:
@@ -247,15 +247,19 @@ def job_strategy_scan():
         
         send_message(msg)
         
-        all_strong = [s for s in momentum_signals + breakout_signals if s['score'] >= 80]
+        # En güçlü sinyalleri detaylı gönder (SPAM koruması yok)
+        all_strong = [s for s in momentum_signals + breakout_signals if s['score'] >= 75]
         if all_strong:
-            new = filter_new_signals(all_strong, hours=6)
-            if new:
-                send_message(f"🔥 <b>{len(new)} EN GÜÇLÜ STRATEJİ SİNYALİ:</b>")
-                send_multiple_signals(new[:3], max_signals=3)
+            send_message(f"🔥 <b>{len(all_strong)} EN GÜÇLÜ:</b>")
+            send_multiple_signals(all_strong[:3], max_signals=3)
+        
     except Exception as e:
-        send_message(f"❌ <b>Strateji hatası</b>\n<code>{str(e)[:200]}</code>")
+        send_message(f"❌ <b>Hata</b>\n<code>{str(e)[:200]}</code>")
 
+
+# ════════════════════════════════════════════
+# 🌆 GÜN SONU RAPORU
+# ════════════════════════════════════════════
 
 def job_end_of_day_report():
     log_event("🌆 GÜN SONU")
@@ -295,64 +299,33 @@ def job_end_of_day_report():
         
         msg += """
 ━━━━━━━━━━━━━━━━━━━━━━━
-💤 <i>Bot dinlenmeye geçiyor</i>
-🌅 <i>Yarın 09:45'te tekrar!</i>"""
+💤 <i>Bot dinlenmeye geçiyor</i>"""
         
         send_message(msg)
     except Exception as e:
-        send_message(f"❌ <b>Gün sonu hatası</b>\n<code>{str(e)[:200]}</code>")
+        send_message(f"❌ <b>Hata</b>\n<code>{str(e)[:200]}</code>")
 
 
-# ════════════════════════════════════════════════════════════
-# ZAMANLAYICI
-# ════════════════════════════════════════════════════════════
-
-def setup_scheduler():
-    scheduler = BlockingScheduler(timezone='Europe/Istanbul')
-    scheduler.add_job(job_morning_preparation, CronTrigger(hour=9, minute=45, day_of_week='mon-fri'), id='morning_prep')
-    scheduler.add_job(job_premarket_report, CronTrigger(hour=9, minute=55, day_of_week='mon-fri'), id='premarket')
-    scheduler.add_job(job_market_open_scan, CronTrigger(hour=10, minute=15, day_of_week='mon-fri'), id='market_open')
-    scheduler.add_job(job_quick_scan, CronTrigger(minute='30,45', hour='10-17', day_of_week='mon-fri'), id='quick_scan')
-    scheduler.add_job(job_full_scan, CronTrigger(minute=0, hour='11-17', day_of_week='mon-fri'), id='full_scan')
-    scheduler.add_job(job_strategy_scan, CronTrigger(hour=14, minute=0, day_of_week='mon-fri'), id='strategy')
-    scheduler.add_job(job_end_of_day_report, CronTrigger(hour=18, minute=15, day_of_week='mon-fri'), id='eod')
-    return scheduler
-
-
-def start_scheduler():
-    print("⏰ ZAMANLAYICI")
-    scheduler = setup_scheduler()
-    
-    try:
-        send_message(f"""🤖 <b>BOT AKTİF</b>
-⏰ {datetime.now().strftime('%H:%M - %d.%m.%Y')}""")
-    except:
-        pass
-    
-    try:
-        scheduler.start()
-    except (KeyboardInterrupt, SystemExit):
-        print("⏹️ Durduruldu")
-
+# ════════════════════════════════════════════
+# MENÜ
+# ════════════════════════════════════════════
 
 if __name__ == "__main__":
-    print("\n⏰ ZAMANLAYICI MENÜ")
-    print("1 → Başlat")
-    print("2 → Sabah test")
-    print("3 → Pre-market test")
-    print("4 → Açılış test")
-    print("5 → Hızlı tarama test")
-    print("6 → Tam tarama test")
-    print("7 → Strateji test")
-    print("8 → Gün sonu test")
+    print("\n⏰ MENÜ")
+    print("1 → Sabah hazırlık")
+    print("2 → Pre-market")
+    print("3 → Açılış")
+    print("4 → Hızlı tarama")
+    print("5 → Tam tarama")
+    print("6 → Strateji")
+    print("7 → Gün sonu")
     
     choice = input("\nSeçim: ").strip()
     
-    if choice == "1": start_scheduler()
-    elif choice == "2": job_morning_preparation()
-    elif choice == "3": job_premarket_report()
-    elif choice == "4": job_market_open_scan()
-    elif choice == "5": job_quick_scan()
-    elif choice == "6": job_full_scan()
-    elif choice == "7": job_strategy_scan()
-    elif choice == "8": job_end_of_day_report()
+    if choice == "1": job_morning_preparation()
+    elif choice == "2": job_premarket_report()
+    elif choice == "3": job_market_open_scan()
+    elif choice == "4": job_quick_scan()
+    elif choice == "5": job_full_scan()
+    elif choice == "6": job_strategy_scan()
+    elif choice == "7": job_end_of_day_report()
