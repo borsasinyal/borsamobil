@@ -1,5 +1,5 @@
 """
-Otomatik Zamanlayıcı - SPAM KORUMASI KAPALI
+Otomatik Zamanlayıcı - TR SAATİ İLE
 Her tarama yeni sinyal kartları gönderir
 """
 
@@ -7,7 +7,7 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 
@@ -22,12 +22,26 @@ from services.scanner import (
 from telegram_bot.bot import send_message, send_multiple_signals
 
 
+# ════════════════════════════════════════════
+# TR SAATİ (UTC+3)
+# ════════════════════════════════════════════
+
+TR_TIMEZONE = timezone(timedelta(hours=3))
+
+
+def now_tr():
+    """Türkiye saatini döndür"""
+    return datetime.now(TR_TIMEZONE)
+
+
 def is_weekday():
-    return datetime.now().weekday() < 5
+    """Hafta içi mi? (TR saatine göre)"""
+    return now_tr().weekday() < 5
 
 
 def log_event(message):
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] {message}")
+    """Log yaz (TR saati ile)"""
+    print(f"[{now_tr().strftime('%H:%M:%S')}] {message}")
 
 
 # ════════════════════════════════════════════
@@ -39,7 +53,7 @@ def job_morning_preparation():
     
     send_message(f"""🌅 <b>SABAH HAZIRLIK BAŞLADI</b>
 ━━━━━━━━━━━━━━━━━━━━━━━
-⏰ {datetime.now().strftime('%H:%M - %d.%m.%Y')}
+⏰ {now_tr().strftime('%H:%M - %d.%m.%Y')}
 📥 Veriler güncelleniyor...
 
 <i>Bu işlem 10-12 dakika sürer</i>""")
@@ -69,7 +83,7 @@ def job_premarket_report():
     log_event("📊 PRE-MARKET")
     
     send_message(f"""📊 <b>PRE-MARKET BAŞLADI</b>
-⏰ {datetime.now().strftime('%H:%M')}""")
+⏰ {now_tr().strftime('%H:%M')}""")
     
     if not is_weekday():
         send_message("⏸️ Hafta sonu")
@@ -96,7 +110,7 @@ def job_premarket_report():
 ━━━━━━━━━━━━━━━━━━━━━━━
 📊 Tarama tamamlandı
 ⚠️ Şu an dikkat çeken hisse yok
-⏰ {datetime.now().strftime('%H:%M')}""")
+⏰ {now_tr().strftime('%H:%M')}""")
     except Exception as e:
         send_message(f"❌ <b>Hata</b>\n<code>{str(e)[:200]}</code>")
 
@@ -110,7 +124,7 @@ def job_market_open_scan():
     
     send_message(f"""🔔 <b>BORSA AÇILDI</b>
 ━━━━━━━━━━━━━━━━━━━━━━━
-⏰ {datetime.now().strftime('%H:%M')}
+⏰ {now_tr().strftime('%H:%M')}
 🔍 İlk tarama başlıyor...""")
     
     if not is_weekday():
@@ -126,10 +140,9 @@ def job_market_open_scan():
 ━━━━━━━━━━━━━━━━━━━━━━━
 📊 567 hisse tarandı
 ⚠️ Kriterlere uygun hisse bulunamadı
-⏰ {datetime.now().strftime('%H:%M')}""")
+⏰ {now_tr().strftime('%H:%M')}""")
             return
         
-        # SPAM KORUMASI YOK - HER ZAMAN GÖNDER
         send_message(f"""🔔 <b>AÇILIŞ - {len(signals)} SİNYAL!</b>
 ━━━━━━━━━━━━━━━━━━━━━━━
 🔥 Güçlü hisseler radara girdi
@@ -149,7 +162,7 @@ def job_quick_scan():
     log_event("⚡ HIZLI TARAMA")
     
     send_message(f"""⚡ <b>HIZLI TARAMA BAŞLADI</b>
-⏰ {datetime.now().strftime('%H:%M')}""")
+⏰ {now_tr().strftime('%H:%M')}""")
     
     try:
         signals = scan_all_stocks(min_score=70, save_to_db=False, verbose=False)
@@ -159,10 +172,9 @@ def job_quick_scan():
 ━━━━━━━━━━━━━━━━━━━━━━━
 📊 Tarama tamamlandı
 ⚠️ Kriterlere uygun hisse bulunamadı (70+)
-⏰ {datetime.now().strftime('%H:%M')}""")
+⏰ {now_tr().strftime('%H:%M')}""")
             return
         
-        # SPAM KORUMASI YOK - HER ZAMAN GÖNDER
         send_message(f"""⚡ <b>{len(signals)} SİNYAL BULUNDU!</b>
 ━━━━━━━━━━━━━━━━━━━━━━━
 📩 Sinyaller geliyor...""")
@@ -182,7 +194,7 @@ def job_full_scan():
     
     send_message(f"""🔍 <b>TAM TARAMA BAŞLADI</b>
 ━━━━━━━━━━━━━━━━━━━━━━━
-⏰ {datetime.now().strftime('%H:%M')}
+⏰ {now_tr().strftime('%H:%M')}
 📊 567 hisse taranıyor...""")
     
     try:
@@ -193,10 +205,9 @@ def job_full_scan():
 ━━━━━━━━━━━━━━━━━━━━━━━
 📊 567 hisse tarandı
 ⚠️ Kriterlere uygun hisse bulunamadı (65+)
-⏰ {datetime.now().strftime('%H:%M')}""")
+⏰ {now_tr().strftime('%H:%M')}""")
             return
         
-        # SPAM KORUMASI YOK - HER ZAMAN GÖNDER
         send_message(f"""🔍 <b>{len(signals)} SİNYAL BULUNDU!</b>
 ━━━━━━━━━━━━━━━━━━━━━━━
 🔥 Güçlü hisseler radara girdi
@@ -217,7 +228,7 @@ def job_strategy_scan():
     
     send_message(f"""💎 <b>STRATEJİ TARAMASI BAŞLADI</b>
 ━━━━━━━━━━━━━━━━━━━━━━━
-⏰ {datetime.now().strftime('%H:%M')}""")
+⏰ {now_tr().strftime('%H:%M')}""")
     
     try:
         momentum_signals = scan_momentum_strategy(min_score=70)
@@ -225,7 +236,7 @@ def job_strategy_scan():
         
         msg = f"""💎 <b>STRATEJİ TARAMASI BİTTİ</b>
 ━━━━━━━━━━━━━━━━━━━━━━━
-⏰ {datetime.now().strftime('%H:%M')}
+⏰ {now_tr().strftime('%H:%M')}
 
 🚀 <b>Momentum:</b> {len(momentum_signals)} hisse
 💥 <b>Kırılım:</b> {len(breakout_signals)} hisse
@@ -247,7 +258,6 @@ def job_strategy_scan():
         
         send_message(msg)
         
-        # En güçlü sinyalleri detaylı gönder (SPAM koruması yok)
         all_strong = [s for s in momentum_signals + breakout_signals if s['score'] >= 75]
         if all_strong:
             send_message(f"🔥 <b>{len(all_strong)} EN GÜÇLÜ:</b>")
@@ -280,9 +290,15 @@ def job_end_of_day_report():
         avg_score = (result['avg_score'] if result and result['avg_score'] else 0)
         max_score = (result['max_score'] if result and result['max_score'] else 0)
         
+        gun_adlari = {
+            0: 'Pazartesi', 1: 'Salı', 2: 'Çarşamba', 3: 'Perşembe',
+            4: 'Cuma', 5: 'Cumartesi', 6: 'Pazar'
+        }
+        gun = gun_adlari[now_tr().weekday()]
+        
         msg = f"""🌆 <b>GÜN SONU RAPORU</b>
 ━━━━━━━━━━━━━━━━━━━━━━━
-📅 {datetime.now().strftime('%d.%m.%Y - %A')}
+📅 {now_tr().strftime('%d.%m.%Y')} - {gun}
 
 📊 <b>İSTATİSTİKLER</b>
    Toplam Sinyal : <b>{total}</b>
@@ -299,7 +315,8 @@ def job_end_of_day_report():
         
         msg += """
 ━━━━━━━━━━━━━━━━━━━━━━━
-💤 <i>Bot dinlenmeye geçiyor</i>"""
+💤 <i>Bot dinlenmeye geçiyor</i>
+🌅 <i>Yarın 09:45'te tekrar!</i>"""
         
         send_message(msg)
     except Exception as e:
