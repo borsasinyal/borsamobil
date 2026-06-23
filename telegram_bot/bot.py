@@ -1,6 +1,7 @@
 """
 Telegram Bot - Profesyonel Sinyal Gönderici
 3 Hedefli kart, uyarılar, kar al önerileri, önemli seviyeler
+HTML Escape + None Koruması + Uzun Mesaj Bölme
 """
 
 import sys
@@ -13,6 +14,18 @@ from telegram import Bot
 from telegram.constants import ParseMode
 
 from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+
+
+# ════════════════════════════════════════════════════════════
+# YARDIMCI FONKSİYONLAR
+# ════════════════════════════════════════════════════════════
+
+def escape_html(text):
+    """HTML özel karakterlerini escape et - Telegram parse hatasını önler"""
+    if text is None:
+        return ""
+    text = str(text)
+    return text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
 
 
 # ════════════════════════════════════════════════════════════
@@ -33,9 +46,35 @@ def get_bot():
 # ════════════════════════════════════════════════════════════
 
 async def send_message_async(text, parse_mode=ParseMode.HTML):
-    """Telegram'a mesaj gönder"""
+    """Telegram'a mesaj gönder - Uzunluk kontrolü + Hata yakalama"""
     bot = get_bot()
     try:
+        # Uzunluk kontrolü (Telegram limit: 4096)
+        if len(text) > 4096:
+            print(f"⚠️ MESAJ ÇOK UZUN: {len(text)} karakter, parçalanıyor...")
+            chunks = []
+            current_chunk = ""
+            for line in text.split('\n'):
+                if len(current_chunk) + len(line) + 1 > 4000:
+                    chunks.append(current_chunk)
+                    current_chunk = line + '\n'
+                else:
+                    current_chunk += line + '\n'
+            if current_chunk:
+                chunks.append(current_chunk)
+            
+            for i, chunk in enumerate(chunks):
+                await bot.send_message(
+                    chat_id=TELEGRAM_CHAT_ID,
+                    text=chunk,
+                    parse_mode=parse_mode,
+                    disable_web_page_preview=True
+                )
+                if i < len(chunks) - 1:
+                    await asyncio.sleep(0.5)
+            return True
+        
+        # Normal gönderim
         await bot.send_message(
             chat_id=TELEGRAM_CHAT_ID,
             text=text,
@@ -43,8 +82,27 @@ async def send_message_async(text, parse_mode=ParseMode.HTML):
             disable_web_page_preview=True
         )
         return True
+    
     except Exception as e:
-        print(f"❌ Mesaj gönderme hatası: {e}")
+        print(f"❌ ❌ ❌ MESAJ GÖNDERME HATASI ❌ ❌ ❌")
+        print(f"   Hata tipi: {type(e).__name__}")
+        print(f"   Hata: {str(e)}")
+        print(f"   Mesaj uzunluğu: {len(text)} karakter")
+        print(f"   İlk 300 karakter:\n{text[:300]}")
+        print(f"   ...")
+        print(f"   Son 300 karakter:\n{text[-300:]}")
+        
+        # Fallback: Plain text dene
+        try:
+            print("🔄 Plain text olarak tekrar deneniyor...")
+            error_msg = f"⚠️ Format hatası!\n\nHata: {str(e)[:200]}\n\nLogları kontrol edin."
+            await bot.send_message(
+                chat_id=TELEGRAM_CHAT_ID,
+                text=error_msg,
+                disable_web_page_preview=True
+            )
+        except Exception as e2:
+            print(f"❌ Fallback de başarısız: {e2}")
         return False
 
 
@@ -62,21 +120,40 @@ def send_message(text):
 # ════════════════════════════════════════════════════════════
 
 def format_signal_for_telegram(signal):
-    """Sinyali Telegram için HTML formatında hazırla - PROFESYONEL"""
+    """Sinyali Telegram için HTML formatında hazırla - HTML ESCAPE'Lİ"""
     if not signal:
+        print("❌ Sinyal None geldi!")
         return None
     
-    # Veriler
+    # ── NONE KORUMASI ──
+    required = ['emoji', 'label', 'symbol', 'current_price', 'score', 
+                'score_bar', 'stars', 'confidence', 'action', 'targets']
+    for field in required:
+        if signal.get(field) is None:
+            print(f"❌ EKSİK ALAN: '{field}' is None")
+            print(f"   Symbol: {signal.get('symbol', 'UNKNOWN')}")
+            return None
+    
+    # Targets kontrolü
+    t = signal['targets']
+    target_required = ['entry', 'target_1', 'target_2', 'target_3', 
+                       'stop_loss', 'target_1_pct', 'target_2_pct',
+                       'target_3_pct', 'stop_pct', 'risk_reward']
+    for field in target_required:
+        if t.get(field) is None:
+            print(f"❌ TARGET EKSİK: '{field}' is None")
+            return None
+    
+    # Veriler (HTML escape ile güvenli hale getir)
     emoji = signal['emoji']
-    label = signal['label']
-    symbol = signal['symbol']
+    label = escape_html(signal['label'])
+    symbol = escape_html(signal['symbol'])
     price = signal['current_price']
     score = signal['score']
     score_bar = signal['score_bar']
     stars = signal['stars']
-    confidence = signal['confidence']
-    action = signal['action']
-    t = signal['targets']
+    confidence = escape_html(signal['confidence'])
+    action = escape_html(signal['action'])
     
     # ── BAŞLIK ──
     msg = f"{emoji} <b>{label}</b>\n"
@@ -122,15 +199,19 @@ def format_signal_for_telegram(signal):
     msg += f"⚖️ <b>Risk/Ödül:</b> 1 / {t['risk_reward']}\n\n"
     
     # ── ALMA SEBEPLERİ ──
-    if signal['reasons']:
+    if signal.get('reasons'):
         msg += "━━━━━━━━━━━━━━━━━━━━━━━\n"
         msg += f"✅ <b>ALMA SEBEPLERİ ({len(signal['reasons'])})</b>\n"
         msg += "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         
-        for i, r in enumerate(signal['reasons'], 1):
-            msg += f"{r['icon']} <b>{r['title']}</b>\n"
-            msg += f"   📌 {r['detail']}\n"
-            msg += f"   → <i>{r['meaning']}</i>\n\n"
+        for r in signal['reasons']:
+            icon = r.get('icon', '✅')
+            title = escape_html(r.get('title', ''))
+            detail = escape_html(r.get('detail', ''))
+            meaning = escape_html(r.get('meaning', ''))
+            msg += f"{icon} <b>{title}</b>\n"
+            msg += f"   📌 {detail}\n"
+            msg += f"   → <i>{meaning}</i>\n\n"
     
     # ── UYARILAR ──
     if signal.get('warnings'):
@@ -139,9 +220,13 @@ def format_signal_for_telegram(signal):
         msg += "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         
         for w in signal['warnings']:
-            msg += f"{w['icon']} <b>{w['title']}</b>\n"
-            msg += f"   📌 {w['detail']}\n"
-            msg += f"   💡 <b>{w['action']}</b>\n\n"
+            icon = w.get('icon', '⚠️')
+            title = escape_html(w.get('title', ''))
+            detail = escape_html(w.get('detail', ''))
+            action_txt = escape_html(w.get('action', ''))
+            msg += f"{icon} <b>{title}</b>\n"
+            msg += f"   📌 {detail}\n"
+            msg += f"   💡 <b>{action_txt}</b>\n\n"
     
     # ── KIRILIMLAR ──
     if signal.get('breakouts'):
@@ -151,8 +236,11 @@ def format_signal_for_telegram(signal):
             msg += "🚀 <b>KIRILIMLAR</b>\n"
             msg += "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
             for br in up_breakouts:
-                msg += f"{br['icon']} <b>{br['detail']}</b>\n"
-                msg += f"   → <i>{br['meaning']}</i>\n\n"
+                icon = br.get('icon', '🚀')
+                detail = escape_html(br.get('detail', ''))
+                meaning = escape_html(br.get('meaning', ''))
+                msg += f"{icon} <b>{detail}</b>\n"
+                msg += f"   → <i>{meaning}</i>\n\n"
     
     # ── MUM FORMASYONLARI ──
     if signal.get('candle_patterns'):
@@ -162,8 +250,11 @@ def format_signal_for_telegram(signal):
             msg += "🕯️ <b>MUM FORMASYONLARI</b>\n"
             msg += "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
             for cp in patterns:
-                msg += f"{cp['icon']} <b>{cp['name']}</b>\n"
-                msg += f"   → <i>{cp['meaning']}</i>\n\n"
+                icon = cp.get('icon', '🕯️')
+                name = escape_html(cp.get('name', ''))
+                meaning = escape_html(cp.get('meaning', ''))
+                msg += f"{icon} <b>{name}</b>\n"
+                msg += f"   → <i>{meaning}</i>\n\n"
     
     # ── PUAN DAĞILIMI ──
     msg += "━━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -214,7 +305,9 @@ def format_signal_for_telegram(signal):
         msg += "💡 <b>ÖNERİLER</b>\n"
         msg += "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         for sug in signal['suggestions']:
-            msg += f"{sug['icon']} <i>{sug['text']}</i>\n"
+            icon = sug.get('icon', '💡')
+            text = escape_html(sug.get('text', ''))
+            msg += f"{icon} <i>{text}</i>\n"
         msg += "\n"
     
     # ── ALT BİLGİ ──
@@ -234,7 +327,9 @@ async def send_signal_async(signal):
     msg = format_signal_for_telegram(signal)
     if msg:
         return await send_message_async(msg)
-    return False
+    else:
+        print(f"⚠️ Sinyal formatlanamadı: {signal.get('symbol', 'UNKNOWN')}")
+        return False
 
 
 def send_signal(signal):
@@ -265,10 +360,14 @@ async def send_multiple_signals_async(signals, max_signals=5):
     await asyncio.sleep(1.5)
     
     sent = 0
-    for signal in signals[:max_signals]:
+    for i, signal in enumerate(signals[:max_signals], 1):
+        print(f"📤 Sinyal {i}/{min(len(signals), max_signals)} gönderiliyor: {signal.get('symbol')}")
         success = await send_signal_async(signal)
         if success:
             sent += 1
+            print(f"   ✅ Gönderildi")
+        else:
+            print(f"   ❌ Gönderilemedi")
         await asyncio.sleep(2)  # Spam koruması
     
     return sent
@@ -290,6 +389,7 @@ def send_multiple_signals(signals, max_signals=5):
 def send_target_hit_alert(symbol, target_num, entry_price, target_price, current_price):
     """Hedef'e ulaştığında uyarı"""
     profit_pct = ((current_price - entry_price) / entry_price) * 100
+    symbol = escape_html(symbol)
     
     msg = f"""🎯 <b>HEDEF {target_num}'E ULAŞILDI!</b>
 ━━━━━━━━━━━━━━━━━━━━━━━
@@ -322,6 +422,7 @@ def send_stop_warning(symbol, entry_price, current_price, stop_loss):
     """Stop'a yaklaştığında uyarı"""
     loss_pct = ((current_price - entry_price) / entry_price) * 100
     distance = ((current_price - stop_loss) / current_price) * 100
+    symbol = escape_html(symbol)
     
     msg = f"""⚠️ <b>STOP-LOSS YAKLAŞIYOR!</b>
 ━━━━━━━━━━━━━━━━━━━━━━━
@@ -342,6 +443,8 @@ def send_stop_warning(symbol, entry_price, current_price, stop_loss):
 def send_momentum_warning(symbol, current_price, entry_price, reason):
     """Momentum azalma uyarısı"""
     profit_pct = ((current_price - entry_price) / entry_price) * 100
+    symbol = escape_html(symbol)
+    reason = escape_html(reason)
     
     msg = f"""⚠️ <b>MOMENTUM ZAYIFLIYOR</b>
 ━━━━━━━━━━━━━━━━━━━━━━━
