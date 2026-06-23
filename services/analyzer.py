@@ -1,6 +1,9 @@
 """
 Profesyonel Teknik Analiz Motoru - Day Trading
 VWAP, Pivot, Supertrend, Mum Formasyonları, Multi-TF
+
+NOT: VWAP KALDIRILDI - Günlük veride yanlış hesap yapıyordu
+     (cumsum 365 gün toplam = anlamsız değer)
 """
 
 import pandas as pd
@@ -102,22 +105,24 @@ def calculate_adx(data, period=14):
 
 
 # ════════════════════════════════════════════════════════════
+# VWAP KALDIRILDI - Günlük veride yanlış hesap yapıyordu
+# ════════════════════════════════════════════════════════════
+# def calculate_vwap(data):
+#     """
+#     VWAP (Volume Weighted Average Price)
+#     KALDIRILDI: cumsum (365 gün toplam) anlamsız değer üretiyordu
+#     Örnek: OSMEN fiyat 7.98 TL, VWAP 8.92 TL gösteriyordu (yanlış!)
+#     """
+#     typical_price = (data['high'] + data['low'] + data['close']) / 3
+#     cumulative_tp_vol = (typical_price * data['volume']).cumsum()
+#     cumulative_vol = data['volume'].cumsum()
+#     vwap = cumulative_tp_vol / cumulative_vol.replace(0, 1)
+#     return vwap
+
+
+# ════════════════════════════════════════════════════════════
 # PROFESYONEL DAY TRADING İNDİKATÖRLERİ
 # ════════════════════════════════════════════════════════════
-
-def calculate_vwap(data):
-    """
-    VWAP (Volume Weighted Average Price)
-    Day trader'ın 1 numaralı aracı
-    Fiyat VWAP üstünde = Alıcılar güçlü
-    Fiyat VWAP altında = Satıcılar güçlü
-    """
-    typical_price = (data['high'] + data['low'] + data['close']) / 3
-    cumulative_tp_vol = (typical_price * data['volume']).cumsum()
-    cumulative_vol = data['volume'].cumsum()
-    vwap = cumulative_tp_vol / cumulative_vol.replace(0, 1)
-    return vwap
-
 
 def calculate_pivot_points(data):
     """
@@ -505,6 +510,7 @@ def detect_momentum_status(data, analysis):
 def analyze_stock(df):
     """
     Bir hisse için TÜM profesyonel indikatörleri hesaplar
+    NOT: VWAP kaldırıldı - günlük veride yanlış hesap yapıyordu
     """
     if len(df) < 50:
         return None
@@ -528,9 +534,10 @@ def analyze_stock(df):
         df['adx'] = df['plus_di'] = df['minus_di'] = pd.Series([None] * len(df))
 
     # ── PROFESYONEL İNDİKATÖRLER ──
-    df['vwap'] = calculate_vwap(df)
+    # VWAP KALDIRILDI - günlük veride yanlış hesap yapıyordu
+    df['vwap'] = pd.Series([None] * len(df))  # VWAP devre dışı
     df['pivot'], df['r1'], df['r2'], df['r3'], df['s1'], df['s2'], df['s3'] = calculate_pivot_points(df)
-    
+
     try:
         df['supertrend'], df['supertrend_dir'] = calculate_supertrend(df)
     except Exception:
@@ -615,7 +622,7 @@ def analyze_stock(df):
         'minus_di': sf(last['minus_di']),
 
         # Profesyonel
-        'vwap': sf(last['vwap']),
+        'vwap': None,  # VWAP KALDIRILDI - günlük veride yanlış hesap
         'pivot': sf(last['pivot']),
         'r1': sf(last['r1']),
         'r2': sf(last['r2']),
@@ -678,10 +685,10 @@ def print_analysis(symbol, result):
     if p['adx']: print(f"   ADX       : {p['adx']:.1f}")
     if p['supertrend_dir']: print(f"   Supertrend: {'🟢 YUKARI' if p['supertrend_dir'] == 1 else '🔴 AŞAĞI'}")
 
-    print(f"\n⭐ DAY TRADING:")
-    if p['vwap']: print(f"   VWAP      : {p['vwap']:.2f}  {'📈 Üstünde' if p['current_price'] > p['vwap'] else '📉 Altında'}")
+    print(f"\n⭐ PİVOT POINTS:")
     if p['pivot']: print(f"   Pivot     : {p['pivot']:.2f}")
     if p['r1']: print(f"   R1        : {p['r1']:.2f}")
+    if p['r2']: print(f"   R2        : {p['r2']:.2f}")
     if p['s1']: print(f"   S1        : {p['s1']:.2f}")
 
     print(f"\n💥 HACİM:")
