@@ -1,6 +1,7 @@
 """
 Profesyonel Tarama Motoru - Day Trading
 Günlük + 15dk verisi, akıllı filtreler, strateji bazlı tarama
+DÜZELTİLMİŞ İSTATİSTİK + YAKIN KAÇIRANLAR + FİLTRE ÖZETİ
 """
 
 import sys
@@ -9,6 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pandas as pd
 from datetime import datetime, timedelta
+from collections import Counter
 from config import BIST_SYMBOLS
 from database import (
     get_stock_history, 
@@ -37,14 +39,14 @@ def passes_safety_filters(symbol, df, analysis):
     # 2. Fiyat kontrolü (penny stock değil)
     current_price = analysis.get('current_price')
     if current_price is None or current_price < 2:
-        return False, f"Fiyat çok düşük ({current_price} TL)"
+        return False, f"Penny stock (Fiyat: {current_price} TL)"
     
     # 3. Likidite
     df_sorted = df.sort_values('date').reset_index(drop=True)
     avg_volume = df_sorted['volume'].tail(20).mean()
     avg_volume_tl = avg_volume * current_price
     
-    if avg_volume_tl < 2_000_000:  # 2 milyon TL altı
+    if avg_volume_tl < 2_000_000:
         return False, f"Likidite düşük ({avg_volume_tl/1_000_000:.1f}M TL)"
     
     # 4. Düşen bıçak değil mi?
@@ -54,7 +56,7 @@ def passes_safety_filters(symbol, df, analysis):
         if all_declining:
             total_drop = ((last_5_closes[0] - last_5_closes[-1]) / last_5_closes[0]) * 100
             if total_drop > 8:
-                return False, f"Düşen bıçak ({total_drop:.1f}% düşüş)"
+                return False, f"Düşen bıçak (%{total_drop:.1f} düşüş)"
     
     # 5. Son 30 günde aşırı düşüş
     if len(df_sorted) >= 30:
@@ -79,20 +81,21 @@ def passes_safety_filters(symbol, df, analysis):
 
 
 # ════════════════════════════════════════════════════════════
-# TEK HİSSE TARAMA
+# TEK HİSSE TARAMA - YENİ DETAYLI STATUS
 # ════════════════════════════════════════════════════════════
 
 def scan_single_stock(symbol, min_score=65, use_15m=False):
     """
     Tek hisseyi tara
     
-    Args:
-        symbol: Hisse kodu (örn: AKBNK.IS)
-        min_score: Minimum sinyal skoru
-        use_15m: 15 dakikalık veri kullan (day trading için)
-    
-    Returns:
-        signal dict veya None
+    Returns: dict with 'status' field:
+        - 'signal'           : Başarılı sinyal (skor ≥ min_score)
+        - 'low_score'        : Skor yetersiz (+ score bilgisi)
+        - 'filtered'         : Güvenlik filtresinden geçemedi
+        - 'no_data'          : Veri yok veya yetersiz
+        - 'analysis_failed'  : Analiz başarısız
+        - 'no_signal'        : Sinyal üretilemedi
+        - 'error'            : Beklenmeyen hata
     """
     try:
         # Veri seç
@@ -104,58 +107,76 @@ def scan_single_stock(symbol, min_score=65, use_15m=False):
         else:
             data = get_stock_history(symbol, days=300)
         
+        # 1. Veri yok mu?
         if not data or len(data) < 50:
-            return None
+            return {
+                'status': 'no_data',
+                'symbol': symbol.replace('.IS', ''),
+                'reason': f'Veri yok veya yetersiz ({len(data) if data else 0} mum)'
+            }
         
         df = pd.DataFrame(data)
         analysis = analyze_stock(df)
         
+        # 2. Analiz başarısız mı?
         if not analysis:
-            return None
+            return {
+                'status': 'analysis_failed',
+                'symbol': symbol.replace('.IS', ''),
+                'reason': 'Teknik analiz hesaplanamadı'
+            }
         
-        # Güvenlik filtreleri
+        # 3. Güvenlik filtreleri
         passes, reason = passes_safety_filters(symbol, df, analysis)
         if not passes:
             return {
+                'status': 'filtered',
                 'symbol': symbol.replace('.IS', ''),
-                'filtered': True,
                 'filter_reason': reason
             }
         
         # Sinyal üret
         signal = generate_signal(symbol, analysis, df)
         
+        # 4. Sinyal üretilemedi mi?
         if not signal:
-            return None
+            return {
+                'status': 'no_signal',
+                'symbol': symbol.replace('.IS', ''),
+                'reason': 'Sinyal üretilemedi'
+            }
         
-        # Minimum skor
+        # 5. Skor yetersiz mi?
         if signal['score'] < min_score:
-            return None
+            return {
+                'status': 'low_score',
+                'symbol': symbol.replace('.IS', ''),
+                'score': signal['score'],
+                'current_price': signal.get('current_price'),
+                'label': signal.get('label', '-')
+            }
         
-        # Timeframe bilgisi ekle
+        # ✅ Başarılı sinyal!
         signal['timeframe'] = '15m' if use_15m else '1d'
-        
+        signal['status'] = 'signal'
         return signal
     
     except Exception as e:
         print(f"   ❌ {symbol} hata: {e}")
-        return None
+        return {
+            'status': 'error',
+            'symbol': symbol.replace('.IS', ''),
+            'error': str(e)[:100]
+        }
 
 
 # ════════════════════════════════════════════════════════════
-# TÜM BIST TARAMA
+# TÜM BIST TARAMA - DETAYLI İSTATİSTİK
 # ════════════════════════════════════════════════════════════
 
 def scan_all_stocks(min_score=65, save_to_db=True, verbose=False, use_15m=False, symbols_list=None):
     """
-    Tüm BIST tarama
-    
-    Args:
-        min_score: Min skor (varsayılan 65)
-        save_to_db: Veritabanına kaydet
-        verbose: Detaylı çıktı
-        use_15m: 15dk verisi kullan
-        symbols_list: Özel liste (None = tüm BIST)
+    Tüm BIST tarama - DETAYLI İSTATİSTİK
     """
     if symbols_list is None:
         symbols_list = BIST_SYMBOLS
@@ -169,9 +190,15 @@ def scan_all_stocks(min_score=65, save_to_db=True, verbose=False, use_15m=False,
     print(f"⏰ {datetime.now().strftime('%H:%M:%S')}")
     print(f"{'='*60}\n")
     
+    # Sonuçları topla
     signals = []
-    filtered_out = []
-    no_data = []
+    low_score_list = []      # Skoru düşük olanlar (yakın kaçıranlar)
+    filtered_list = []        # Filtrelenenler
+    filter_reasons = []       # Filtre sebepleri (en yaygın olanları görmek için)
+    no_data_list = []         # Veri yok olanlar
+    analysis_failed_list = [] # Analiz başarısız
+    no_signal_list = []       # Sinyal üretilemedi
+    error_list = []           # Hatalı
     
     for i, symbol in enumerate(symbols_list, 1):
         if i % 25 == 0 or i == len(symbols_list):
@@ -180,51 +207,146 @@ def scan_all_stocks(min_score=65, save_to_db=True, verbose=False, use_15m=False,
         result = scan_single_stock(symbol, min_score, use_15m)
         
         if result is None:
-            no_data.append(symbol)
+            # Bu olmamalı ama güvenlik için
+            error_list.append({'symbol': symbol, 'error': 'None döndü'})
             continue
         
-        if result.get('filtered'):
-            filtered_out.append(result)
+        status = result.get('status', 'unknown')
+        
+        # Her status'a göre kategorize et
+        if status == 'signal':
+            signals.append(result)
+            if verbose:
+                print(f"   ✅ {result['symbol']}: Skor {result['score']} - {result['label']}")
+            
+            # DB kayıt
+            if save_to_db:
+                save_signal(
+                    symbol=result['symbol'],
+                    signal_type=result['signal_type'],
+                    price=result['current_price'],
+                    target_price=result['targets']['target_2'],
+                    stop_loss=result['targets']['stop_loss'],
+                    score=result['score'],
+                    strategy=result['strength'],
+                    timeframe=result['timeframe']
+                )
+        
+        elif status == 'low_score':
+            low_score_list.append(result)
+        
+        elif status == 'filtered':
+            filtered_list.append(result)
+            filter_reasons.append(result.get('filter_reason', 'Bilinmiyor'))
             if verbose:
                 print(f"   🚫 {result['symbol']}: {result['filter_reason']}")
-            continue
         
-        signals.append(result)
+        elif status == 'no_data':
+            no_data_list.append(result)
         
-        if verbose:
-            print(f"   ✅ {result['symbol']}: Skor {result['score']} - {result['label']}")
+        elif status == 'analysis_failed':
+            analysis_failed_list.append(result)
         
-        # DB kayıt
-        if save_to_db:
-            save_signal(
-                symbol=result['symbol'],
-                signal_type=result['signal_type'],
-                price=result['current_price'],
-                target_price=result['targets']['target_2'],
-                stop_loss=result['targets']['stop_loss'],
-                score=result['score'],
-                strategy=result['strength'],
-                timeframe=result['timeframe']
-            )
+        elif status == 'no_signal':
+            no_signal_list.append(result)
+        
+        elif status == 'error':
+            error_list.append(result)
     
     # Sırala
     signals.sort(key=lambda x: x['score'], reverse=True)
+    low_score_list.sort(key=lambda x: x.get('score', 0), reverse=True)
     
-    # Özet
+    # ════════════════════════════════════════════════════════
+    # DETAYLI ÖZET
+    # ════════════════════════════════════════════════════════
+    total = len(symbols_list)
+    
     print(f"\n{'='*60}")
     print(f"📊 TARAMA TAMAMLANDI - {timeframe}")
     print(f"{'='*60}")
-    print(f"✅ Güçlü Sinyal : {len(signals)}")
-    print(f"🚫 Filtrelendi  : {len(filtered_out)}")
-    print(f"⚪ Veri Yok    : {len(no_data)}")
-    print(f"📋 Toplam       : {len(symbols_list)}")
-    print(f"{'='*60}\n")
+    print(f"✅ Güçlü Sinyal (≥{min_score})    : {len(signals)}")
+    print(f"📉 Skor düşük (<{min_score})      : {len(low_score_list)}")
+    print(f"🚫 Güvenlik filtresi            : {len(filtered_list)}")
+    print(f"⚪ Veri yok                     : {len(no_data_list)}")
+    print(f"⚠️  Analiz başarısız            : {len(analysis_failed_list)}")
+    print(f"❌ Sinyal üretilemedi           : {len(no_signal_list)}")
+    print(f"💥 Hata                         : {len(error_list)}")
+    print(f"{'─'*60}")
+    print(f"📋 TOPLAM                       : {total}")
+    print(f"{'='*60}")
+    
+    # ════════════════════════════════════════════════════════
+    # YAKIN KAÇIRANLAR (Top 10)
+    # ════════════════════════════════════════════════════════
+    if low_score_list:
+        near_misses = [s for s in low_score_list if s.get('score', 0) >= 50][:10]
+        if near_misses:
+            print(f"\n📊 YAKIN KAÇIRANLAR (Skor 50-{min_score-1} arası):")
+            print(f"{'─'*60}")
+            for nm in near_misses:
+                score = nm.get('score', 0)
+                price = nm.get('current_price', 0)
+                gap = min_score - score
+                print(f"   • {nm['symbol']:<8} Skor: {score:>3}/100  "
+                      f"Fiyat: {price:.2f} TL  ({gap} puan eksik)")
+            print()
+    
+    # ════════════════════════════════════════════════════════
+    # FİLTRE SEBEPLERİ ÖZETİ
+    # ════════════════════════════════════════════════════════
+    if filter_reasons:
+        # En sık karşılaşılan filtre sebeplerini göster
+        reason_summary = Counter()
+        for reason in filter_reasons:
+            # Sayıyı çıkar, sadece tipini al ("Likidite düşük (1.5M TL)" → "Likidite düşük")
+            reason_type = reason.split('(')[0].strip()
+            reason_summary[reason_type] += 1
+        
+        print(f"\n🚫 FİLTRE SEBEPLERİ (En sık):")
+        print(f"{'─'*60}")
+        for reason, count in reason_summary.most_common(8):
+            bar = '█' * min(count // 2, 30)
+            print(f"   • {reason:<30} {count:>3}  {bar}")
+        print()
+    
+    # ════════════════════════════════════════════════════════
+    # SKOR DAĞILIMI (Tüm değerlendirmeler)
+    # ════════════════════════════════════════════════════════
+    all_scored = signals + low_score_list
+    if all_scored:
+        score_buckets = {
+            '85-100 (🔥🔥🔥)': 0,
+            '75-84  (🔥🔥)': 0,
+            '65-74  (🔥)': 0,
+            '55-64  (🟡)': 0,
+            '45-54  (⚪)': 0,
+            '0-44   (⬇️)': 0,
+        }
+        
+        for s in all_scored:
+            sc = s.get('score', 0)
+            if sc >= 85: score_buckets['85-100 (🔥🔥🔥)'] += 1
+            elif sc >= 75: score_buckets['75-84  (🔥🔥)'] += 1
+            elif sc >= 65: score_buckets['65-74  (🔥)'] += 1
+            elif sc >= 55: score_buckets['55-64  (🟡)'] += 1
+            elif sc >= 45: score_buckets['45-54  (⚪)'] += 1
+            else: score_buckets['0-44   (⬇️)'] += 1
+        
+        print(f"\n📊 SKOR DAĞILIMI ({len(all_scored)} hisse):")
+        print(f"{'─'*60}")
+        max_count = max(score_buckets.values()) if score_buckets.values() else 1
+        for bucket, count in score_buckets.items():
+            bar_length = int((count / max_count) * 30) if max_count > 0 else 0
+            bar = '█' * bar_length
+            print(f"   {bucket:<18} {count:>3}  {bar}")
+        print()
     
     return signals
 
 
 # ════════════════════════════════════════════════════════════
-# STRATEJİ BAZLI TARAMA
+# STRATEJİ BAZLI TARAMA (Aynı kaldı)
 # ════════════════════════════════════════════════════════════
 
 def scan_momentum_strategy(min_score=70):
@@ -233,7 +355,6 @@ def scan_momentum_strategy(min_score=70):
     
     all_signals = scan_all_stocks(min_score=min_score, save_to_db=False)
     
-    # Filtreleme: MACD pozitif + RSI 50-70 + RVOL > 1.5
     momentum_signals = []
     for s in all_signals:
         ind = s.get('indicators', {})
@@ -255,7 +376,6 @@ def scan_breakout_strategy(min_score=70):
     
     all_signals = scan_all_stocks(min_score=min_score, save_to_db=False)
     
-    # Sadece kırılım yapanlar
     breakout_signals = []
     for s in all_signals:
         breakouts = s.get('breakouts', [])
@@ -272,7 +392,6 @@ def scan_vwap_bounce_strategy(min_score=65):
     
     all_signals = scan_all_stocks(min_score=min_score, save_to_db=False, use_15m=True)
     
-    # VWAP'a yakın olanlar
     vwap_signals = []
     for s in all_signals:
         kl = s.get('key_levels', {})
@@ -281,14 +400,14 @@ def scan_vwap_bounce_strategy(min_score=65):
         
         if vwap and price:
             diff_pct = abs((price - vwap) / vwap) * 100
-            if diff_pct < 1.5:  # VWAP'a %1.5 yakınlık
+            if diff_pct < 1.5:
                 vwap_signals.append(s)
     
     return vwap_signals
 
 
 # ════════════════════════════════════════════════════════════
-# SPAM KORUMASI
+# SPAM KORUMASI (Aynı kaldı)
 # ════════════════════════════════════════════════════════════
 
 def is_recently_sent(symbol, hours=4):
@@ -322,9 +441,7 @@ def filter_new_signals(signals, hours=4):
 # ════════════════════════════════════════════════════════════
 
 def scan_and_notify(min_score=70, use_15m=False, max_signals=5, spam_hours=0):
-    """
-    Tara ve yeni sinyalleri Telegram'a gönder
-    """
+    """Tara ve yeni sinyalleri Telegram'a gönder"""
     from telegram_bot.bot import send_multiple_signals, send_message
     
     print("\n🔍 Tarama başlıyor...")
@@ -339,7 +456,6 @@ def scan_and_notify(min_score=70, use_15m=False, max_signals=5, spam_hours=0):
         print("⚠️  Sinyal yok")
         return 0
     
-    # Spam koruması
     new_signals = filter_new_signals(signals, hours=spam_hours)
     
     if not new_signals:
@@ -386,7 +502,6 @@ def print_top_signals(signals, top_n=10):
     
     print("─" * 60)
     
-    # En iyi 3'ünü detaylı göster
     print(f"\n\n{'='*60}")
     print(f"🌟 EN İYİ 3 - DETAYLI")
     print(f"{'='*60}")
