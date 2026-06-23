@@ -1,7 +1,6 @@
 """
 Profesyonel Otomatik Zamanlayıcı - 7/24 Çalışma Sistemi
-SWING TRADE optimized - Min skor değerleri ayarlandı
-TIMEZONE FIX: Türkiye saati (UTC+3) kullanılıyor
+SWING TRADE optimized + TR Timezone + Sinyal Takip Birleştirilmiş
 """
 
 import sys
@@ -94,7 +93,6 @@ def job_premarket_report():
         return
     
     try:
-        # SWING için min skor 60
         signals = scan_all_stocks(min_score=60, save_to_db=False, verbose=False)
         
         if signals:
@@ -142,7 +140,6 @@ def job_market_open_scan():
     
     try:
         fetch_all_15m(symbols_list=BIST_SYMBOLS[:100], delay=0.1)
-        # SWING için min skor 60
         signals = scan_all_stocks(min_score=60, save_to_db=True, verbose=False)
         
         if not signals:
@@ -155,7 +152,6 @@ def job_market_open_scan():
 <i>11:00'de tekrar tarayacağım</i>""")
             return
         
-        # SPAM KORUMASI KAPALI - hours=0
         send_message(f"""🔔 <b>AÇILIŞ - {len(signals)} SİNYAL BULUNDU!</b>
 ━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -179,7 +175,6 @@ def job_quick_scan():
 ⏰ {tr_now().strftime('%H:%M')}""")
     
     try:
-        # Hızlı tarama için biraz daha yüksek (kaliteli sinyaller)
         signals = scan_all_stocks(min_score=65, save_to_db=False, verbose=False)
         
         if not signals:
@@ -192,7 +187,6 @@ def job_quick_scan():
 <i>Sonraki taramayı bekleyin</i>""")
             return
         
-        # SPAM KORUMASI KAPALI
         send_message(f"""⚡ <b>{len(signals)} SİNYAL BULUNDU!</b>
 ━━━━━━━━━━━━━━━━━━━━━━━
 📩 Sinyaller geliyor...""")
@@ -218,7 +212,6 @@ def job_full_scan():
 <i>Radara giren hisseler aranıyor...</i>""")
     
     try:
-        # SWING için min skor 60
         signals = scan_all_stocks(min_score=60, save_to_db=True, verbose=False)
         
         if not signals:
@@ -231,7 +224,6 @@ def job_full_scan():
 <i>Bir sonraki saatte tekrar bakacağım</i>""")
             return
         
-        # SPAM KORUMASI KAPALI - HER SEFERINDE GÖNDER
         send_message(f"""🔍 <b>{len(signals)} SİNYAL BULUNDU!</b>
 ━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -257,7 +249,6 @@ def job_strategy_scan():
 🔍 Momentum + Kırılım analizi...""")
     
     try:
-        # Strateji için min skor 65 (daha kaliteli)
         momentum_signals = scan_momentum_strategy(min_score=65)
         breakout_signals = scan_breakout_strategy(min_score=65)
         
@@ -285,7 +276,6 @@ def job_strategy_scan():
         
         send_message(msg)
         
-        # En güçlü sinyalleri detaylı gönder
         all_strong = [s for s in momentum_signals + breakout_signals if s['score'] >= 75]
         if all_strong:
             send_message(f"🔥 <b>{len(all_strong)} EN GÜÇLÜ STRATEJİ SİNYALİ:</b>")
@@ -362,6 +352,28 @@ En Yüksek     : <b>{max_score}/100</b>
 
 
 # ════════════════════════════════════════════════════════════
+# 🎯 TAM TARAMA + SİNYAL TAKİP BİRLEŞTİRİLMİŞ (YENİ!)
+# ════════════════════════════════════════════════════════════
+def job_full_scan_with_tracking():
+    """
+    Tam tarama yapar VE hemen ardından sinyal takip yapar
+    Aynı çalışma içinde olduğu için veritabanı problemi olmaz!
+    """
+    log_event("🔍 TAM TARAMA + SİNYAL TAKİP BAŞLADI")
+    
+    # 1. ADIM: Tam tarama yap (sinyaller bulunur ve takibe alınır)
+    job_full_scan()
+    
+    # 2. ADIM: Hemen ardından sinyal takip yap
+    log_event("🎯 SİNYAL TAKİP BAŞLATILIYOR...")
+    try:
+        from services.signal_tracker import track_signals_job
+        track_signals_job()
+    except Exception as e:
+        send_message(f"❌ <b>Sinyal takip hatası</b>\n<code>{str(e)[:200]}</code>")
+
+
+# ════════════════════════════════════════════════════════════
 # ZAMANLAYICI KURULUMU
 # ════════════════════════════════════════════════════════════
 def setup_scheduler():
@@ -403,6 +415,7 @@ if __name__ == "__main__":
     print("6 → Tam tarama test")
     print("7 → Strateji test")
     print("8 → Gün sonu test")
+    print("9 → Tam tarama + Sinyal takip test")
     
     choice = input("\nSeçim: ").strip()
     
@@ -414,3 +427,4 @@ if __name__ == "__main__":
     elif choice == "6": job_full_scan()
     elif choice == "7": job_strategy_scan()
     elif choice == "8": job_end_of_day_report()
+    elif choice == "9": job_full_scan_with_tracking()
