@@ -1,6 +1,7 @@
 """
 Telegram Bot - Profesyonel Sinyal Gönderici
 SWING TRADE optimized + VWAP kaldırıldı + Tutma süresi önerisi
+TIMEZONE FIX: Türkiye saati (UTC+3) kullanılıyor
 """
 
 import sys
@@ -8,11 +9,22 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from telegram import Bot
 from telegram.constants import ParseMode
 
 from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+
+
+# ════════════════════════════════════════════════════════════
+# TÜRKİYE SAATİ (TIMEZONE FIX)
+# ════════════════════════════════════════════════════════════
+
+TR_TIMEZONE = timezone(timedelta(hours=3))
+
+def tr_now():
+    """Türkiye saatini döndür (UTC+3)"""
+    return datetime.now(TR_TIMEZONE)
 
 
 # ════════════════════════════════════════════════════════════
@@ -159,7 +171,7 @@ def format_signal_for_telegram(signal):
     # ── HİSSE BİLGİSİ ──
     msg += f"📌 <b>{symbol}</b>\n"
     msg += f"💰 Fiyat: <b>{price:.2f} TL</b>\n"
-    msg += f"⏰ {datetime.now().strftime('%H:%M - %d.%m.%Y')}\n\n"
+    msg += f"⏰ {tr_now().strftime('%H:%M - %d.%m.%Y')}\n\n"
     
     # ── SKOR ──
     msg += f"💯 <b>SKOR: {score}/100</b>\n"
@@ -384,7 +396,7 @@ async def send_multiple_signals_async(signals, max_signals=5):
 📊 <b>{len(signals)}</b> güçlü sinyal bulundu
 🏆 En iyi <b>{min(len(signals), max_signals)}</b> tanesi gönderiliyor
 
-⏰ {datetime.now().strftime('%H:%M - %d.%m.%Y')}
+⏰ {tr_now().strftime('%H:%M - %d.%m.%Y')}
 """
     await send_message_async(summary.strip())
     await asyncio.sleep(1.5)
@@ -532,7 +544,7 @@ async def send_test_message_async():
 • Skor 75+ → GÜÇLÜ AL
 • Skor 85+ → ÇOK GÜÇLÜ AL
 
-⏰ {datetime.now().strftime('%H:%M - %d.%m.%Y')}
+⏰ {tr_now().strftime('%H:%M - %d.%m.%Y')}
 
 ━━━━━━━━━━━━━━━━━━━━━━━
 💡 <i>Profesyonel SWING sinyalleri buradan gelecek</i>
@@ -568,6 +580,7 @@ if __name__ == "__main__":
     
     print(f"\n✅ Token  : {TELEGRAM_BOT_TOKEN[:20]}...")
     print(f"✅ Chat ID: {TELEGRAM_CHAT_ID}")
+    print(f"⏰ TR Saati: {tr_now().strftime('%H:%M - %d.%m.%Y')}")
     
     print("\n📋 SEÇENEKLER:")
     print("  1 → Test mesajı gönder")
