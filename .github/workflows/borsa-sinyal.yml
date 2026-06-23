@@ -16,6 +16,7 @@ on:
           - quick_scan
           - strategy_scan
           - end_of_day_report
+          - signal_tracker
 
 jobs:
   scan:
@@ -48,7 +49,8 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python database.py
       
-      - name: Gunluk veriyi cek
+      - name: Gunluk veriyi cek (sadece tarama gorevlerinde)
+        if: ${{ github.event.inputs.job_type != 'signal_tracker' && github.event.inputs.job_type != 'end_of_day_report' }}
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -56,11 +58,20 @@ jobs:
           python -c "from services.data_fetcher import fetch_all_daily; from config import BIST_SYMBOLS; fetch_all_daily(symbols_list=BIST_SYMBOLS, delay=0.05)"
       
       - name: Manuel gorev
+        if: ${{ github.event.inputs.job_type != 'signal_tracker' }}
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           python -c "from services.scheduler import job_${{ github.event.inputs.job_type }}; job_${{ github.event.inputs.job_type }}()"
+      
+      - name: Sinyal takip gorevi
+        if: ${{ github.event.inputs.job_type == 'signal_tracker' }}
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python -c "from services.signal_tracker import track_signals_job; track_signals_job()"
       
       - name: Tamamlandi
         run: echo "Gorev tamamlandi"
