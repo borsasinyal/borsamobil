@@ -43,6 +43,14 @@ jobs:
           pip install --upgrade pip
           pip install flask yfinance pandas numpy python-telegram-bot apscheduler requests
       
+      # ⭐ YENİ: Veritabanını artifact'tan indir
+      - name: Veritabanini indir (varsa)
+        uses: actions/download-artifact@v4
+        with:
+          name: borsa-database
+          path: ./
+        continue-on-error: true
+      
       - name: Veritabani baslat
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -72,6 +80,16 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           python -c "from services.signal_tracker import track_signals_job; track_signals_job()"
+      
+      # ⭐ YENİ: Veritabanını artifact olarak yükle
+      - name: Veritabanini yukle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: borsa-database
+          path: ./borsa_sinyal.db
+          retention-days: 7
+          overwrite: true
       
       - name: Tamamlandi
         run: echo "Gorev tamamlandi"
