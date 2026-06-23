@@ -43,7 +43,7 @@ jobs:
           pip install --upgrade pip
           pip install flask yfinance pandas numpy python-telegram-bot apscheduler requests
       
-      # ⭐ YENİ: Veritabanını artifact'tan indir
+      # ⭐ Veritabanını artifact'tan indir
       - name: Veritabanini indir (varsa)
         uses: actions/download-artifact@v4
         with:
@@ -51,7 +51,27 @@ jobs:
           path: ./
         continue-on-error: true
       
-      - name: Veritabani baslat
+      # ⭐ Veritabanı yoksa oluştur, varsa DOKUNMA!
+      - name: Veritabani durumu kontrol
+        id: db_check
+        run: |
+          if [ -f "./borsa_sinyal.db" ]; then
+            SIZE=$(stat -c%s "./borsa_sinyal.db")
+            echo "Veritabani mevcut: $SIZE bytes"
+            if [ "$SIZE" -lt "5000" ]; then
+              echo "Veritabani cok kucuk, yeniden olusturulacak"
+              echo "needs_init=true" >> $GITHUB_OUTPUT
+            else
+              echo "Veritabani dolu, dokunulmayacak"
+              echo "needs_init=false" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "Veritabani yok, olusturulacak"
+            echo "needs_init=true" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Veritabani baslat (sadece gerekiyorsa)
+        if: steps.db_check.outputs.needs_init == 'true'
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -81,7 +101,7 @@ jobs:
         run: |
           python -c "from services.signal_tracker import track_signals_job; track_signals_job()"
       
-      # ⭐ YENİ: Veritabanını artifact olarak yükle
+      # ⭐ Veritabanını artifact olarak yükle
       - name: Veritabanini yukle
         if: always()
         uses: actions/upload-artifact@v4
