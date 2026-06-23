@@ -1,18 +1,14 @@
 """
 Profesyonel Otomatik Zamanlayıcı - 7/24 Çalışma Sistemi
 SWING TRADE optimized - Min skor değerleri ayarlandı
-
-GÜNCELLEMELER:
-- Min skor: 65 → 60 (daha fazla sinyal)
-- Min skor (hızlı): 70 → 65
-- SWING dili mesajlarda
+TIMEZONE FIX: Türkiye saati (UTC+3) kullanılıyor
 """
 
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from datetime import datetime, time as dt_time
+from datetime import datetime, timezone, timedelta, time as dt_time
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 
@@ -28,8 +24,20 @@ from services.scanner import (
 from telegram_bot.bot import send_message, send_multiple_signals
 
 
+# ════════════════════════════════════════════════════════════
+# TÜRKİYE SAATİ (TIMEZONE FIX)
+# ════════════════════════════════════════════════════════════
+
+TR_TIMEZONE = timezone(timedelta(hours=3))
+
+def tr_now():
+    """Türkiye saatini döndür (UTC+3)"""
+    return datetime.now(TR_TIMEZONE)
+
+
 def is_weekday():
-    return datetime.now().weekday() < 5
+    """Türkiye saatine göre hafta içi mi?"""
+    return tr_now().weekday() < 5
 
 
 def is_market_open():
@@ -37,7 +45,8 @@ def is_market_open():
 
 
 def log_event(message):
-    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    """Türkiye saati ile log yaz"""
+    timestamp = tr_now().strftime('%Y-%m-%d %H:%M:%S')
     print(f"[{timestamp}] {message}")
 
 
@@ -49,7 +58,7 @@ def job_morning_preparation():
     
     send_message(f"""🌅 <b>SABAH HAZIRLIK BAŞLADI</b>
 ━━━━━━━━━━━━━━━━━━━━━━━
-⏰ {datetime.now().strftime('%H:%M - %d.%m.%Y')}
+⏰ {tr_now().strftime('%H:%M - %d.%m.%Y')}
 📥 Veriler güncelleniyor...
 
 <i>Bu işlem 10-12 dakika sürer</i>""")
@@ -78,7 +87,7 @@ def job_premarket_report():
     log_event("📊 PRE-MARKET")
     
     send_message(f"""📊 <b>PRE-MARKET TARAMASI BAŞLADI</b>
-⏰ {datetime.now().strftime('%H:%M')}""")
+⏰ {tr_now().strftime('%H:%M')}""")
     
     if not is_weekday():
         send_message("⏸️ Hafta sonu - atlandı")
@@ -107,7 +116,7 @@ def job_premarket_report():
 ━━━━━━━━━━━━━━━━━━━━━━━
 📊 Tarama tamamlandı
 ⚠️ Şu an dikkat çeken hisse yok
-⏰ {datetime.now().strftime('%H:%M')}
+⏰ {tr_now().strftime('%H:%M')}
 
 <i>Açılış sonrası tekrar bakacağım</i>""")
     except Exception as e:
@@ -122,7 +131,7 @@ def job_market_open_scan():
     
     send_message(f"""🔔 <b>BORSA AÇILDI</b>
 ━━━━━━━━━━━━━━━━━━━━━━━
-⏰ {datetime.now().strftime('%H:%M')}
+⏰ {tr_now().strftime('%H:%M')}
 🔍 İlk tarama başlıyor...
 
 <i>Radara giren hisseler aranıyor...</i>""")
@@ -141,7 +150,7 @@ def job_market_open_scan():
 ━━━━━━━━━━━━━━━━━━━━━━━
 📊 567 hisse tarandı
 ⚠️ Kriterlere uygun hisse bulunamadı
-⏰ {datetime.now().strftime('%H:%M')}
+⏰ {tr_now().strftime('%H:%M')}
 
 <i>11:00'de tekrar tarayacağım</i>""")
             return
@@ -167,7 +176,7 @@ def job_quick_scan():
     log_event("⚡ HIZLI TARAMA")
     
     send_message(f"""⚡ <b>HIZLI TARAMA BAŞLADI</b>
-⏰ {datetime.now().strftime('%H:%M')}""")
+⏰ {tr_now().strftime('%H:%M')}""")
     
     try:
         # Hızlı tarama için biraz daha yüksek (kaliteli sinyaller)
@@ -178,7 +187,7 @@ def job_quick_scan():
 ━━━━━━━━━━━━━━━━━━━━━━━
 📊 Tarama tamamlandı
 ⚠️ Kriterlere uygun hisse bulunamadı (skor 65+)
-⏰ {datetime.now().strftime('%H:%M')}
+⏰ {tr_now().strftime('%H:%M')}
 
 <i>Sonraki taramayı bekleyin</i>""")
             return
@@ -203,7 +212,7 @@ def job_full_scan():
     
     send_message(f"""🔍 <b>TAM TARAMA BAŞLADI</b>
 ━━━━━━━━━━━━━━━━━━━━━━━
-⏰ {datetime.now().strftime('%H:%M')}
+⏰ {tr_now().strftime('%H:%M')}
 📊 567 hisse taranıyor...
 
 <i>Radara giren hisseler aranıyor...</i>""")
@@ -217,7 +226,7 @@ def job_full_scan():
 ━━━━━━━━━━━━━━━━━━━━━━━
 📊 567 hisse tarandı
 ⚠️ Kriterlere uygun hisse bulunamadı (skor 60+)
-⏰ {datetime.now().strftime('%H:%M')}
+⏰ {tr_now().strftime('%H:%M')}
 
 <i>Bir sonraki saatte tekrar bakacağım</i>""")
             return
@@ -244,7 +253,7 @@ def job_strategy_scan():
     
     send_message(f"""💎 <b>STRATEJİ TARAMASI BAŞLADI</b>
 ━━━━━━━━━━━━━━━━━━━━━━━
-⏰ {datetime.now().strftime('%H:%M')}
+⏰ {tr_now().strftime('%H:%M')}
 🔍 Momentum + Kırılım analizi...""")
     
     try:
@@ -254,7 +263,7 @@ def job_strategy_scan():
         
         msg = f"""💎 <b>STRATEJİ TARAMASI BİTTİ</b>
 ━━━━━━━━━━━━━━━━━━━━━━━
-⏰ {datetime.now().strftime('%H:%M')}
+⏰ {tr_now().strftime('%H:%M')}
 
 🚀 <b>Momentum:</b> {len(momentum_signals)} hisse
 💥 <b>Kırılım:</b> {len(breakout_signals)} hisse
@@ -321,7 +330,7 @@ def job_end_of_day_report():
         
         msg = f"""🌆 <b>GÜN SONU RAPORU</b>
 ━━━━━━━━━━━━━━━━━━━━━━━
-📅 {datetime.now().strftime('%d.%m.%Y - %A')}
+📅 {tr_now().strftime('%d.%m.%Y - %A')}
 
 📊 <b>İSTATİSTİKLER</b>
 Toplam Sinyal : <b>{total}</b>
@@ -373,7 +382,7 @@ def start_scheduler():
     
     try:
         send_message(f"""🤖 <b>BOT AKTİF</b>
-⏰ {datetime.now().strftime('%H:%M - %d.%m.%Y')}""")
+⏰ {tr_now().strftime('%H:%M - %d.%m.%Y')}""")
     except:
         pass
     
@@ -385,6 +394,7 @@ def start_scheduler():
 
 if __name__ == "__main__":
     print("\n⏰ ZAMANLAYICI MENÜ")
+    print(f"🕐 TR Saati: {tr_now().strftime('%H:%M - %d.%m.%Y')}")
     print("1 → Başlat")
     print("2 → Sabah test")
     print("3 → Pre-market test")
