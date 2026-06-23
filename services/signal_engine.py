@@ -9,13 +9,25 @@ GÜNCELLEMELER:
 - Tutma süresi önerisi eklendi
 - Risk seviyesi eklendi
 - Pivot Point güçlendirildi
+- TIMEZONE FIX: Türkiye saati (UTC+3) kullanılıyor
 """
 
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+
+
+# ════════════════════════════════════════════════════════════
+# TÜRKİYE SAATİ (TIMEZONE FIX)
+# ════════════════════════════════════════════════════════════
+
+TR_TIMEZONE = timezone(timedelta(hours=3))
+
+def tr_now():
+    """Türkiye saatini döndür (UTC+3)"""
+    return datetime.now(TR_TIMEZONE)
 
 
 # ════════════════════════════════════════════════════════════
@@ -691,7 +703,7 @@ def determine_strength(score):
 
 
 # ════════════════════════════════════════════════════════════
-# TUTMA SÜRESİ ÖNERİSİ - YENİ FONKSİYON
+# TUTMA SÜRESİ ÖNERİSİ
 # ════════════════════════════════════════════════════════════
 
 def suggest_holding_period(score, indicators):
@@ -749,7 +761,7 @@ def suggest_holding_period(score, indicators):
 
 
 # ════════════════════════════════════════════════════════════
-# SİNYAL ÜRETME - GÜNCELLENMİŞ
+# SİNYAL ÜRETME
 # ════════════════════════════════════════════════════════════
 
 def generate_signal(symbol, analysis, history_df=None):
@@ -782,7 +794,7 @@ def generate_signal(symbol, analysis, history_df=None):
         'atr': analysis.get('atr'),
     }
     
-    # YENİ: Tutma süresi önerisi
+    # Tutma süresi önerisi
     holding = suggest_holding_period(total_score, indicators)
     
     # Skor bar
@@ -808,7 +820,7 @@ def generate_signal(symbol, analysis, history_df=None):
         'pivot': analysis.get('pivot'),
         'r1': analysis.get('r1'),
         'r2': analysis.get('r2'),
-        'r3': analysis.get('r3'),  # YENİ: R3 de eklendi
+        'r3': analysis.get('r3'),
         's1': analysis.get('s1'),
         'prev_day_high': analysis.get('prev_day_high'),
         'prev_day_low': analysis.get('prev_day_low'),
@@ -820,7 +832,7 @@ def generate_signal(symbol, analysis, history_df=None):
     signal = {
         'symbol': symbol.replace('.IS', ''),
         'full_symbol': symbol,
-        'timestamp': datetime.now().isoformat(),
+        'timestamp': tr_now().isoformat(),  # TR saati
         'current_price': current_price,
         'score': total_score,
         'score_bar': score_bar,
@@ -831,8 +843,8 @@ def generate_signal(symbol, analysis, history_df=None):
         'emoji': signal_info['emoji'],
         'action': signal_info['action'],
         'confidence': signal_info['confidence'],
-        'risk_level': signal_info['risk_level'],  # YENİ
-        'holding': holding,                        # YENİ
+        'risk_level': signal_info['risk_level'],
+        'holding': holding,
         'targets': targets,
         'reasons': score_data['reasons'],
         'breakdown': score_data['breakdown'],
@@ -863,14 +875,14 @@ def format_signal_message(signal):
     msg.append("║  ══════════════════════════════════")
     msg.append(f"║  📌 {signal['symbol']}")
     msg.append(f"║  💰 Fiyat: {signal['current_price']:.2f} TL")
-    msg.append(f"║  ⏰ {datetime.now().strftime('%H:%M - %d.%m.%Y')}")
+    msg.append(f"║  ⏰ {tr_now().strftime('%H:%M - %d.%m.%Y')}")
     msg.append("╠══════════════════════════════════════╣")
     msg.append(f"║  💯 SKOR: {signal['score']}/100")
     msg.append(f"║  {signal['score_bar']}")
     msg.append(f"║  {signal['stars']}")
     msg.append(f"║  📊 {signal['confidence']}")
     
-    # YENİ: Strateji bilgisi
+    # Strateji bilgisi
     holding = signal.get('holding', {})
     if holding and holding.get('strategy') and holding.get('strategy') != 'YOK':
         msg.append("╠══════════════════════════════════════╣")
@@ -950,6 +962,7 @@ if __name__ == "__main__":
     test_symbols = ["AKBNK.IS", "THYAO.IS", "ASELS.IS", "AEFES.IS", "AKSA.IS"]
     
     print("\n🧪 SİNYAL MOTORU TESTİ (PROFESYONEL - SWING)")
+    print(f"🕐 TR Saati: {tr_now().strftime('%H:%M - %d.%m.%Y')}")
     print("=" * 60)
     
     for symbol in test_symbols:
