@@ -6,7 +6,7 @@ on:
       job_type:
         description: 'Hangi görev?'
         required: true
-        default: 'full_scan'
+        default: 'full_scan_with_tracking'
         type: choice
         options:
           - morning_preparation
@@ -17,6 +17,7 @@ on:
           - strategy_scan
           - end_of_day_report
           - signal_tracker
+          - full_scan_with_tracking
 
 jobs:
   scan:
@@ -43,35 +44,7 @@ jobs:
           pip install --upgrade pip
           pip install flask yfinance pandas numpy python-telegram-bot apscheduler requests
       
-      # ⭐ Veritabanını artifact'tan indir
-      - name: Veritabanini indir (varsa)
-        uses: actions/download-artifact@v4
-        with:
-          name: borsa-database
-          path: ./
-        continue-on-error: true
-      
-      # ⭐ Veritabanı yoksa oluştur, varsa DOKUNMA!
-      - name: Veritabani durumu kontrol
-        id: db_check
-        run: |
-          if [ -f "./borsa_sinyal.db" ]; then
-            SIZE=$(stat -c%s "./borsa_sinyal.db")
-            echo "Veritabani mevcut: $SIZE bytes"
-            if [ "$SIZE" -lt "5000" ]; then
-              echo "Veritabani cok kucuk, yeniden olusturulacak"
-              echo "needs_init=true" >> $GITHUB_OUTPUT
-            else
-              echo "Veritabani dolu, dokunulmayacak"
-              echo "needs_init=false" >> $GITHUB_OUTPUT
-            fi
-          else
-            echo "Veritabani yok, olusturulacak"
-            echo "needs_init=true" >> $GITHUB_OUTPUT
-          fi
-      
-      - name: Veritabani baslat (sadece gerekiyorsa)
-        if: steps.db_check.outputs.needs_init == 'true'
+      - name: Veritabani baslat
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -100,16 +73,6 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           python -c "from services.signal_tracker import track_signals_job; track_signals_job()"
-      
-      # ⭐ Veritabanını artifact olarak yükle
-      - name: Veritabanini yukle
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: borsa-database
-          path: ./borsa_sinyal.db
-          retention-days: 7
-          overwrite: true
       
       - name: Tamamlandi
         run: echo "Gorev tamamlandi"
