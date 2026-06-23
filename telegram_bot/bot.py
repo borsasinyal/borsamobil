@@ -1,17 +1,6 @@
 """
 Telegram Bot - Profesyonel Sinyal Gönderici
 SWING TRADE optimized + VWAP kaldırıldı + Tutma süresi önerisi
-
-GÜNCELLEMELER:
-- HTML escape (parse hatası fix)
-- VWAP gösterimi kaldırıldı
-- "Pivot Point" puan adı
-- Pivot seviyelerinde ✅/🎯 işaretler
-- Strateji ve tutma süresi bölümü
-- "Almadan önce" checklist bölümü
-- SWING dili (Day Trade → Swing Trade)
-- Uzun mesaj otomatik bölme
-- Detaylı hata yakalama
 """
 
 import sys
@@ -94,25 +83,19 @@ async def send_message_async(text, parse_mode=ParseMode.HTML):
         return True
     
     except Exception as e:
-        print(f"❌ ❌ ❌ MESAJ GÖNDERME HATASI ❌ ❌ ❌")
-        print(f"   Hata tipi: {type(e).__name__}")
+        print(f"❌ MESAJ GÖNDERME HATASI")
         print(f"   Hata: {str(e)}")
         print(f"   Mesaj uzunluğu: {len(text)} karakter")
-        print(f"   İlk 300 karakter:\n{text[:300]}")
-        print(f"   ...")
-        print(f"   Son 300 karakter:\n{text[-300:]}")
         
         # Fallback: Plain text dene
         try:
-            print("🔄 Plain text olarak tekrar deneniyor...")
-            error_msg = f"⚠️ Format hatası!\n\nHata: {str(e)[:200]}\n\nLogları kontrol edin."
             await bot.send_message(
                 chat_id=TELEGRAM_CHAT_ID,
-                text=error_msg,
+                text=f"⚠️ Format hatası!\n\nHata: {str(e)[:200]}",
                 disable_web_page_preview=True
             )
-        except Exception as e2:
-            print(f"❌ Fallback de başarısız: {e2}")
+        except:
+            pass
         return False
 
 
@@ -144,7 +127,6 @@ def format_signal_for_telegram(signal):
     for field in required:
         if signal.get(field) is None:
             print(f"❌ EKSİK ALAN: '{field}' is None")
-            print(f"   Symbol: {signal.get('symbol', 'UNKNOWN')}")
             return None
     
     # Targets kontrolü
@@ -186,7 +168,7 @@ def format_signal_for_telegram(signal):
     msg += f"📊 <i>{confidence}</i>\n"
     msg += f"🎯 <b>{action}</b>\n\n"
     
-    # ── STRATEJİ VE TUTMA SÜRESİ (YENİ) ──
+    # ── STRATEJİ VE TUTMA SÜRESİ ──
     if holding and holding.get('strategy') and holding.get('strategy') != 'YOK':
         msg += "━━━━━━━━━━━━━━━━━━━━━━━\n"
         msg += "📋 <b>STRATEJİ ÖNERİSİ</b>\n"
@@ -291,7 +273,7 @@ def format_signal_for_telegram(signal):
                 msg += f"{icon} <b>{name}</b>\n"
                 msg += f"   → <i>{meaning}</i>\n\n"
     
-    # ── PUAN DAĞILIMI (VWAP/Pivot → Pivot Point olarak değişti) ──
+    # ── PUAN DAĞILIMI ──
     msg += "━━━━━━━━━━━━━━━━━━━━━━━\n"
     msg += "📊 <b>PUAN DAĞILIMI</b>\n"
     msg += "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -304,7 +286,7 @@ def format_signal_for_telegram(signal):
     msg += f"🚀 Kırılım/Mum : <b>{b['breakout_candle']['score']}/{b['breakout_candle']['max']}</b>\n"
     msg += f"💧 Likidite    : <b>{b['liquidity']['score']}/{b['liquidity']['max']}</b>\n\n"
     
-    # ── ÖNEMLİ SEVİYELER (VWAP kaldırıldı) ──
+    # ── ÖNEMLİ SEVİYELER ──
     kl = signal.get('key_levels', {})
     has_levels = any([kl.get('pivot'), kl.get('ema_9'), kl.get('r1')])
     
@@ -313,7 +295,7 @@ def format_signal_for_telegram(signal):
         msg += "📍 <b>ÖNEMLİ SEVİYELER</b>\n"
         msg += "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         
-        # Pivot Points (en önemli)
+        # Pivot Points
         if kl.get('pivot'):
             arrow_pivot = "🟢" if price > kl['pivot'] else "🔴"
             msg += f"{arrow_pivot} Pivot   : <b>{kl['pivot']:.2f} TL</b>\n"
@@ -352,19 +334,6 @@ def format_signal_for_telegram(signal):
             text = escape_html(sug.get('text', ''))
             msg += f"{icon} <i>{text}</i>\n"
         msg += "\n"
-    
-    # ── ÖNEMLİ BİLGİLER VE VERİ UYARISI (YENİ) ──
-    msg += "━━━━━━━━━━━━━━━━━━━━━━━\n"
-    msg += "⚠️ <b>ALMADAN ÖNCE</b>\n"
-    msg += "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-    msg += "📊 <i>Veri: Yahoo Finance (15dk gecikme)</i>\n"
-    msg += "💡 <i>Canlı fiyat kontrol edin:</i>\n"
-    msg += "   • Mynet Finans\n"
-    msg += "   • İş Yatırım\n"
-    msg += "   • Bigpara\n\n"
-    msg += "✅ <i>Stop emrini önceden kurun</i>\n"
-    msg += "✅ <i>Pozisyon büyüklüğüne dikkat</i>\n"
-    msg += "✅ <i>BIST 100 trendine bakın</i>\n\n"
     
     # ── ALT BİLGİ ──
     msg += "━━━━━━━━━━━━━━━━━━━━━━━\n"
