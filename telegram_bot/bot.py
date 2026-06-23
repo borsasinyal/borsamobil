@@ -1,7 +1,17 @@
 """
 Telegram Bot - Profesyonel Sinyal Gönderici
-3 Hedefli kart, uyarılar, kar al önerileri, önemli seviyeler
-HTML Escape + None Koruması + Uzun Mesaj Bölme
+SWING TRADE optimized + VWAP kaldırıldı + Tutma süresi önerisi
+
+GÜNCELLEMELER:
+- HTML escape (parse hatası fix)
+- VWAP gösterimi kaldırıldı
+- "Pivot Point" puan adı
+- Pivot seviyelerinde ✅/🎯 işaretler
+- Strateji ve tutma süresi bölümü
+- "Almadan önce" checklist bölümü
+- SWING dili (Day Trade → Swing Trade)
+- Uzun mesaj otomatik bölme
+- Detaylı hata yakalama
 """
 
 import sys
@@ -116,16 +126,19 @@ def send_message(text):
 
 
 # ════════════════════════════════════════════════════════════
-# PROFESYONEL SİNYAL FORMATLAMA
+# PROFESYONEL SİNYAL FORMATLAMA - SWING OPTIMIZED
 # ════════════════════════════════════════════════════════════
 
 def format_signal_for_telegram(signal):
-    """Sinyali Telegram için HTML formatında hazırla - HTML ESCAPE'Lİ"""
+    """
+    Sinyali Telegram için HTML formatında hazırla
+    SWING optimized + VWAP kaldırıldı + Tutma süresi
+    """
     if not signal:
         print("❌ Sinyal None geldi!")
         return None
     
-    # ── NONE KORUMASI ──
+    # None koruması
     required = ['emoji', 'label', 'symbol', 'current_price', 'score', 
                 'score_bar', 'stars', 'confidence', 'action', 'targets']
     for field in required:
@@ -144,7 +157,7 @@ def format_signal_for_telegram(signal):
             print(f"❌ TARGET EKSİK: '{field}' is None")
             return None
     
-    # Veriler (HTML escape ile güvenli hale getir)
+    # Veriler (HTML escape ile)
     emoji = signal['emoji']
     label = escape_html(signal['label'])
     symbol = escape_html(signal['symbol'])
@@ -154,6 +167,8 @@ def format_signal_for_telegram(signal):
     stars = signal['stars']
     confidence = escape_html(signal['confidence'])
     action = escape_html(signal['action'])
+    risk_level = escape_html(signal.get('risk_level', '-'))
+    holding = signal.get('holding', {})
     
     # ── BAŞLIK ──
     msg = f"{emoji} <b>{label}</b>\n"
@@ -171,6 +186,20 @@ def format_signal_for_telegram(signal):
     msg += f"📊 <i>{confidence}</i>\n"
     msg += f"🎯 <b>{action}</b>\n\n"
     
+    # ── STRATEJİ VE TUTMA SÜRESİ (YENİ) ──
+    if holding and holding.get('strategy') and holding.get('strategy') != 'YOK':
+        msg += "━━━━━━━━━━━━━━━━━━━━━━━\n"
+        msg += "📋 <b>STRATEJİ ÖNERİSİ</b>\n"
+        msg += "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        msg += f"⚡ <b>Tip:</b> {escape_html(holding.get('strategy', ''))}\n"
+        if holding.get('duration', '-') != '-':
+            msg += f"📅 <b>Tutma:</b> {escape_html(holding['duration'])}\n"
+        msg += f"🎲 <b>Risk:</b> {risk_level}\n"
+        if holding.get('reason'):
+            msg += f"💡 <i>{escape_html(holding['reason'])}</i>\n"
+        msg += "\n"
+    
+    # ── İŞLEM PLANI ──
     msg += "━━━━━━━━━━━━━━━━━━━━━━━\n"
     msg += "💼 <b>İŞLEM PLANI - 3 HEDEF</b>\n"
     msg += "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -179,18 +208,24 @@ def format_signal_for_telegram(signal):
     msg += f"📥 <b>GİRİŞ:</b> {t['entry']:.2f} TL\n\n"
     
     # ── HEDEF 1 ──
+    h1_days = "1-2 gün" if score >= 85 else "2-3 gün" if score >= 75 else "2-4 gün"
     msg += f"🎯 <b>HEDEF 1:</b> {t['target_1']:.2f} TL "
     msg += f"<b>(+{t['target_1_pct']}%)</b>\n"
+    msg += f"   ⏰ <i>{h1_days}'de olası</i>\n"
     msg += f"   💡 <i>%33 sat, stop'u girişe çek</i>\n\n"
     
     # ── HEDEF 2 ──
+    h2_days = "2-3 gün" if score >= 85 else "3-4 gün" if score >= 75 else "3-5 gün"
     msg += f"🎯 <b>HEDEF 2:</b> {t['target_2']:.2f} TL "
     msg += f"<b>(+{t['target_2_pct']}%)</b>\n"
+    msg += f"   ⏰ <i>{h2_days}'de olası</i>\n"
     msg += f"   💡 <i>%33 sat, stop'u Hedef 1'e çek</i>\n\n"
     
     # ── HEDEF 3 ──
+    h3_days = "3-5 gün" if score >= 85 else "4-7 gün" if score >= 75 else "5-10 gün"
     msg += f"🎯 <b>HEDEF 3:</b> {t['target_3']:.2f} TL "
     msg += f"<b>(+{t['target_3_pct']}%)</b>\n"
+    msg += f"   ⏰ <i>{h3_days}'de olası</i>\n"
     msg += f"   💡 <i>Kalanı sat (trend kırılırsa)</i>\n\n"
     
     # ── STOP ──
@@ -244,7 +279,7 @@ def format_signal_for_telegram(signal):
     
     # ── MUM FORMASYONLARI ──
     if signal.get('candle_patterns'):
-        patterns = signal['candle_patterns'][:3]  # En fazla 3 göster
+        patterns = signal['candle_patterns'][:3]
         if patterns:
             msg += "━━━━━━━━━━━━━━━━━━━━━━━\n"
             msg += "🕯️ <b>MUM FORMASYONLARI</b>\n"
@@ -256,7 +291,7 @@ def format_signal_for_telegram(signal):
                 msg += f"{icon} <b>{name}</b>\n"
                 msg += f"   → <i>{meaning}</i>\n\n"
     
-    # ── PUAN DAĞILIMI ──
+    # ── PUAN DAĞILIMI (VWAP/Pivot → Pivot Point olarak değişti) ──
     msg += "━━━━━━━━━━━━━━━━━━━━━━━\n"
     msg += "📊 <b>PUAN DAĞILIMI</b>\n"
     msg += "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -265,34 +300,42 @@ def format_signal_for_telegram(signal):
     msg += f"💥 Hacim       : <b>{b['volume']['score']}/{b['volume']['max']}</b>\n"
     msg += f"⚡ Momentum    : <b>{b['momentum']['score']}/{b['momentum']['max']}</b>\n"
     msg += f"📈 Trend       : <b>{b['trend']['score']}/{b['trend']['max']}</b>\n"
-    msg += f"⭐ VWAP/Pivot  : <b>{b['vwap_pivot']['score']}/{b['vwap_pivot']['max']}</b>\n"
+    msg += f"🎯 Pivot Point : <b>{b['vwap_pivot']['score']}/{b['vwap_pivot']['max']}</b>\n"
     msg += f"🚀 Kırılım/Mum : <b>{b['breakout_candle']['score']}/{b['breakout_candle']['max']}</b>\n"
     msg += f"💧 Likidite    : <b>{b['liquidity']['score']}/{b['liquidity']['max']}</b>\n\n"
     
-    # ── ÖNEMLİ SEVİYELER ──
+    # ── ÖNEMLİ SEVİYELER (VWAP kaldırıldı) ──
     kl = signal.get('key_levels', {})
-    has_levels = any([kl.get('vwap'), kl.get('pivot'), kl.get('ema_9')])
+    has_levels = any([kl.get('pivot'), kl.get('ema_9'), kl.get('r1')])
     
     if has_levels:
         msg += "━━━━━━━━━━━━━━━━━━━━━━━\n"
         msg += "📍 <b>ÖNEMLİ SEVİYELER</b>\n"
         msg += "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         
-        if kl.get('vwap'):
-            arrow = "🟢" if price > kl['vwap'] else "🔴"
-            msg += f"{arrow} VWAP    : <b>{kl['vwap']:.2f} TL</b>\n"
+        # Pivot Points (en önemli)
         if kl.get('pivot'):
-            msg += f"🎯 Pivot   : <b>{kl['pivot']:.2f} TL</b>\n"
+            arrow_pivot = "🟢" if price > kl['pivot'] else "🔴"
+            msg += f"{arrow_pivot} Pivot   : <b>{kl['pivot']:.2f} TL</b>\n"
         if kl.get('r1'):
-            msg += f"⬆️ R1      : <b>{kl['r1']:.2f} TL</b>\n"
+            arrow_r1 = "✅" if price > kl['r1'] else "🎯"
+            msg += f"{arrow_r1} R1      : <b>{kl['r1']:.2f} TL</b>\n"
         if kl.get('r2'):
-            msg += f"⬆️ R2      : <b>{kl['r2']:.2f} TL</b>\n"
+            arrow_r2 = "✅" if price > kl['r2'] else "🎯"
+            msg += f"{arrow_r2} R2      : <b>{kl['r2']:.2f} TL</b>\n"
+        if kl.get('r3'):
+            arrow_r3 = "✅" if price > kl['r3'] else "🎯"
+            msg += f"{arrow_r3} R3      : <b>{kl['r3']:.2f} TL</b>\n"
         if kl.get('s1'):
             msg += f"⬇️ S1      : <b>{kl['s1']:.2f} TL</b>\n"
+        
+        # EMA değerleri
         if kl.get('ema_9'):
             msg += f"📊 EMA 9   : <b>{kl['ema_9']:.2f} TL</b>\n"
         if kl.get('ema_21'):
             msg += f"📊 EMA 21  : <b>{kl['ema_21']:.2f} TL</b>\n"
+        
+        # Dün
         if kl.get('prev_day_high'):
             msg += f"📈 Dün H   : <b>{kl['prev_day_high']:.2f} TL</b>\n"
         if kl.get('prev_day_low'):
@@ -310,9 +353,27 @@ def format_signal_for_telegram(signal):
             msg += f"{icon} <i>{text}</i>\n"
         msg += "\n"
     
+    # ── ÖNEMLİ BİLGİLER VE VERİ UYARISI (YENİ) ──
+    msg += "━━━━━━━━━━━━━━━━━━━━━━━\n"
+    msg += "⚠️ <b>ALMADAN ÖNCE</b>\n"
+    msg += "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+    msg += "📊 <i>Veri: Yahoo Finance (15dk gecikme)</i>\n"
+    msg += "💡 <i>Canlı fiyat kontrol edin:</i>\n"
+    msg += "   • Mynet Finans\n"
+    msg += "   • İş Yatırım\n"
+    msg += "   • Bigpara\n\n"
+    msg += "✅ <i>Stop emrini önceden kurun</i>\n"
+    msg += "✅ <i>Pozisyon büyüklüğüne dikkat</i>\n"
+    msg += "✅ <i>BIST 100 trendine bakın</i>\n\n"
+    
     # ── ALT BİLGİ ──
     msg += "━━━━━━━━━━━━━━━━━━━━━━━\n"
-    msg += f"⏱️ <i>Day Trade • Tutma: 1-3 gün</i>\n"
+    if holding and holding.get('strategy') and holding.get('strategy') != 'YOK':
+        strategy_name = holding.get('strategy', 'SWING')
+        duration = holding.get('duration', '2-5 gün')
+        msg += f"⏱️ <i>{escape_html(strategy_name)} • Tutma: {escape_html(duration)}</i>\n"
+    else:
+        msg += f"⏱️ <i>SWING TRADE • Tutma: 2-5 gün</i>\n"
     msg += f"🤖 <i>Borsa Sinyal Bot</i>\n"
     
     return msg
@@ -477,7 +538,7 @@ def send_momentum_warning(symbol, current_price, entry_price, reason):
 
 async def send_test_message_async():
     """Test mesajı"""
-    msg = f"""🎉 <b>BORSA SİNYAL BOT - PROFESYONEL</b>
+    msg = f"""🎉 <b>BORSA SİNYAL BOT - SWING OPTIMIZED</b>
 ━━━━━━━━━━━━━━━━━━━━━━━
 
 ✅ Bot bağlantısı başarılı
@@ -485,20 +546,27 @@ async def send_test_message_async():
 📊 Tüm indikatörler aktif
 
 🎯 <b>AKTIF ÖZELLİKLER:</b>
-• VWAP analizi
-• Pivot Points (P, R1-R3, S1-S3)
+• Pivot Points (P, R1-R3, S1-S3) ⭐
 • Supertrend
 • 10 mum formasyonu
 • Çoklu kırılım tespiti
-• 3 hedefli işlem planı
+• 3 hedefli işlem planı (SWING)
 • ATR bazlı dinamik stop
 • Momentum azalma uyarısı
 • Kar al önerileri
+• Tutma süresi önerisi
+• Risk seviyesi göstergesi
+
+📋 <b>STRATEJİ:</b>
+• SWING TRADE (1-5 gün tutma)
+• Skor 65+ → AL sinyali
+• Skor 75+ → GÜÇLÜ AL
+• Skor 85+ → ÇOK GÜÇLÜ AL
 
 ⏰ {datetime.now().strftime('%H:%M - %d.%m.%Y')}
 
 ━━━━━━━━━━━━━━━━━━━━━━━
-💡 <i>Artık profesyonel sinyaller buradan gelecek</i>
+💡 <i>Profesyonel SWING sinyalleri buradan gelecek</i>
 """
     return await send_message_async(msg.strip())
 
@@ -518,7 +586,7 @@ def send_test_message():
 
 if __name__ == "__main__":
     print("\n" + "="*60)
-    print("🤖 TELEGRAM BOT TEST - PROFESYONEL")
+    print("🤖 TELEGRAM BOT TEST - SWING OPTIMIZED")
     print("="*60)
     
     if not TELEGRAM_BOT_TOKEN:
