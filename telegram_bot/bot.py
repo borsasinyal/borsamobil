@@ -2,6 +2,7 @@
 Telegram Bot - Profesyonel Sinyal Gönderici
 SWING TRADE optimized + VWAP kaldırıldı + Tutma süresi önerisi
 TIMEZONE FIX: Türkiye saati (UTC+3) kullanılıyor
+YENİ: Top 5 özet kart eklendi
 """
 
 import sys
@@ -118,6 +119,55 @@ def send_message(text):
     except Exception as e:
         print(f"❌ Mesaj hatası: {e}")
         return False
+
+
+# ════════════════════════════════════════════════════════════
+# YENİ: ÖZET KART FORMATLAMA (TOP 5)
+# ════════════════════════════════════════════════════════════
+
+def format_summary_card(signals, max_signals=5):
+    """
+    Top N sinyali tek bir özet kartta göster
+    Detaylı kartlardan ÖNCE gönderilir
+    """
+    if not signals:
+        return None
+    
+    top_signals = signals[:max_signals]
+    count = len(top_signals)
+    
+    msg = f"🏆 <b>EN İYİ {count} SINYAL</b>\n"
+    msg += "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+    
+    for i, signal in enumerate(top_signals, 1):
+        symbol = escape_html(signal.get('symbol', '-'))
+        score = signal.get('score', 0)
+        price = signal.get('current_price', 0)
+        
+        # Hedef 1 bilgisi
+        targets = signal.get('targets', {})
+        target_1 = targets.get('target_1', 0)
+        target_1_pct = targets.get('target_1_pct', 0)
+        
+        # Numara emoji
+        number_emoji = {
+            1: '1️⃣', 2: '2️⃣', 3: '3️⃣', 
+            4: '4️⃣', 5: '5️⃣',
+            6: '6️⃣', 7: '7️⃣', 8: '8️⃣',
+            9: '9️⃣', 10: '🔟'
+        }.get(i, f"{i}.")
+        
+        # Format: "1️⃣ PAMEL  | 83 | 101.60 → 109.73 (+8.0%)"
+        msg += f"{number_emoji} <b>{symbol}</b>  |  "
+        msg += f"<b>{score}</b>  |  "
+        msg += f"{price:.2f} → <b>{target_1:.2f}</b> "
+        msg += f"(<b>+{target_1_pct}%</b>)\n"
+    
+    msg += "\n━━━━━━━━━━━━━━━━━━━━━━━\n"
+    msg += f"⏰ {tr_now().strftime('%H:%M - %d.%m.%Y')}\n"
+    msg += "📩 <i>Detaylı kartlar geliyor...</i>"
+    
+    return msg
 
 
 # ════════════════════════════════════════════════════════════
@@ -384,12 +434,15 @@ def send_signal(signal):
 
 
 async def send_multiple_signals_async(signals, max_signals=5):
-    """Birden çok sinyali sırayla gönder"""
+    """
+    Birden çok sinyali sırayla gönder
+    YENİ: Önce özet kart, sonra detaylı kartlar
+    """
     if not signals:
         await send_message_async("⚠️ <b>Şu an güçlü sinyal yok</b>")
         return 0
     
-    # Özet mesaj
+    # 1️⃣ Özet mesaj (kaç sinyal bulundu)
     summary = f"""🔍 <b>BIST TARAMASI</b>
 ━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -401,9 +454,21 @@ async def send_multiple_signals_async(signals, max_signals=5):
     await send_message_async(summary.strip())
     await asyncio.sleep(1.5)
     
+    # 2️⃣ YENİ: TOP 5 ÖZET KART
+    summary_card = format_summary_card(signals, max_signals)
+    if summary_card:
+        print(f"📤 Özet kart gönderiliyor...")
+        success = await send_message_async(summary_card)
+        if success:
+            print(f"   ✅ Özet kart gönderildi")
+        else:
+            print(f"   ❌ Özet kart gönderilemedi")
+        await asyncio.sleep(2)
+    
+    # 3️⃣ Detaylı kartlar
     sent = 0
     for i, signal in enumerate(signals[:max_signals], 1):
-        print(f"📤 Sinyal {i}/{min(len(signals), max_signals)} gönderiliyor: {signal.get('symbol')}")
+        print(f"📤 Detaylı kart {i}/{min(len(signals), max_signals)} gönderiliyor: {signal.get('symbol')}")
         success = await send_signal_async(signal)
         if success:
             sent += 1
@@ -537,6 +602,7 @@ async def send_test_message_async():
 • Kar al önerileri
 • Tutma süresi önerisi
 • Risk seviyesi göstergesi
+• Top 5 özet kart (YENİ!)
 
 📋 <b>STRATEJİ:</b>
 • SWING TRADE (1-5 gün tutma)
