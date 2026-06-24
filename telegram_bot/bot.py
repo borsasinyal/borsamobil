@@ -1,8 +1,6 @@
 """
 Telegram Bot - Profesyonel Sinyal Gönderici
-SWING TRADE optimized + VWAP kaldırıldı + Tutma süresi önerisi
-TIMEZONE FIX: Türkiye saati (UTC+3) kullanılıyor
-YENİ: Top 5 özet kart eklendi
+SWING TRADE optimized + Renkli kartlar + Güzel özet
 """
 
 import sys
@@ -18,13 +16,12 @@ from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
 
 
 # ════════════════════════════════════════════════════════════
-# TÜRKİYE SAATİ (TIMEZONE FIX)
+# TÜRKİYE SAATİ
 # ════════════════════════════════════════════════════════════
 
 TR_TIMEZONE = timezone(timedelta(hours=3))
 
 def tr_now():
-    """Türkiye saatini döndür (UTC+3)"""
     return datetime.now(TR_TIMEZONE)
 
 
@@ -33,7 +30,6 @@ def tr_now():
 # ════════════════════════════════════════════════════════════
 
 def escape_html(text):
-    """HTML özel karakterlerini escape et - Telegram parse hatasını önler"""
     if text is None:
         return ""
     text = str(text)
@@ -41,11 +37,40 @@ def escape_html(text):
 
 
 # ════════════════════════════════════════════════════════════
+# YENİ: SİNYAL SIRASINA GÖRE RENK
+# ════════════════════════════════════════════════════════════
+
+def get_signal_color(signal_index):
+    """Sinyal sırasına göre renk emoji döndür"""
+    colors = {
+        1: '🟢',  # Yeşil
+        2: '🔵',  # Mavi
+        3: '🟣',  # Mor
+        4: '🟡',  # Sarı
+        5: '🟠',  # Turuncu
+        6: '🔴',  # Kırmızı (varsa)
+        7: '⚪',  # Beyaz (varsa)
+    }
+    return colors.get(signal_index, '⚪')
+
+
+def get_medal_emoji(rank):
+    """Sıralamaya göre madalya emoji"""
+    medals = {
+        1: '🥇',  # Altın
+        2: '🥈',  # Gümüş
+        3: '🥉',  # Bronz
+        4: '🏅',  # Madalya
+        5: '🎖️',  # Madalya
+    }
+    return medals.get(rank, f"{rank}.")
+
+
+# ════════════════════════════════════════════════════════════
 # BOT BAĞLANTI
 # ════════════════════════════════════════════════════════════
 
 def get_bot():
-    """Bot örneğini döndür"""
     if not TELEGRAM_BOT_TOKEN:
         raise ValueError("❌ TELEGRAM_BOT_TOKEN config.py'de boş!")
     if not TELEGRAM_CHAT_ID:
@@ -58,10 +83,8 @@ def get_bot():
 # ════════════════════════════════════════════════════════════
 
 async def send_message_async(text, parse_mode=ParseMode.HTML):
-    """Telegram'a mesaj gönder - Uzunluk kontrolü + Hata yakalama"""
     bot = get_bot()
     try:
-        # Uzunluk kontrolü (Telegram limit: 4096)
         if len(text) > 4096:
             print(f"⚠️ MESAJ ÇOK UZUN: {len(text)} karakter, parçalanıyor...")
             chunks = []
@@ -86,7 +109,6 @@ async def send_message_async(text, parse_mode=ParseMode.HTML):
                     await asyncio.sleep(0.5)
             return True
         
-        # Normal gönderim
         await bot.send_message(
             chat_id=TELEGRAM_CHAT_ID,
             text=text,
@@ -100,7 +122,6 @@ async def send_message_async(text, parse_mode=ParseMode.HTML):
         print(f"   Hata: {str(e)}")
         print(f"   Mesaj uzunluğu: {len(text)} karakter")
         
-        # Fallback: Plain text dene
         try:
             await bot.send_message(
                 chat_id=TELEGRAM_CHAT_ID,
@@ -113,7 +134,6 @@ async def send_message_async(text, parse_mode=ParseMode.HTML):
 
 
 def send_message(text):
-    """Senkron mesaj gönderme"""
     try:
         return asyncio.run(send_message_async(text))
     except Exception as e:
@@ -122,13 +142,13 @@ def send_message(text):
 
 
 # ════════════════════════════════════════════════════════════
-# YENİ: ÖZET KART FORMATLAMA (TOP 5)
+# YENİ ÖZET KART (GÜZELLEŞTİRİLMİŞ)
 # ════════════════════════════════════════════════════════════
 
 def format_summary_card(signals, max_signals=5):
     """
-    Top N sinyali tek bir özet kartta göster
-    Detaylı kartlardan ÖNCE gönderilir
+    Top N sinyali güzel özet kartta göster
+    Madalya + renk + skor barı ile
     """
     if not signals:
         return None
@@ -136,34 +156,46 @@ def format_summary_card(signals, max_signals=5):
     top_signals = signals[:max_signals]
     count = len(top_signals)
     
-    msg = f"🏆 <b>EN İYİ {count} SINYAL</b>\n"
-    msg += "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+    # Üst süsleme
+    msg = "🏆🏆🏆━━━━━━━━━━━━━━━━━🏆🏆🏆\n"
+    msg += f"      <b>EN İYİ {count} SİNYAL</b>\n"
+    msg += "🏆🏆🏆━━━━━━━━━━━━━━━━━🏆🏆🏆\n\n"
     
     for i, signal in enumerate(top_signals, 1):
         symbol = escape_html(signal.get('symbol', '-'))
         score = signal.get('score', 0)
         price = signal.get('current_price', 0)
         
-        # Hedef 1 bilgisi
+        # Hedef bilgisi
         targets = signal.get('targets', {})
         target_1 = targets.get('target_1', 0)
         target_1_pct = targets.get('target_1_pct', 0)
         
-        # Numara emoji
-        number_emoji = {
-            1: '1️⃣', 2: '2️⃣', 3: '3️⃣', 
-            4: '4️⃣', 5: '5️⃣',
-            6: '6️⃣', 7: '7️⃣', 8: '8️⃣',
-            9: '9️⃣', 10: '🔟'
-        }.get(i, f"{i}.")
+        # Madalya emoji
+        medal = get_medal_emoji(i)
         
-        # Format: "1️⃣ PAMEL  | 83 | 101.60 → 109.73 (+8.0%)"
-        msg += f"{number_emoji} <b>{symbol}</b>  |  "
-        msg += f"<b>{score}</b>  |  "
-        msg += f"{price:.2f} → <b>{target_1:.2f}</b> "
-        msg += f"(<b>+{target_1_pct}%</b>)\n"
+        # Renkli yıldız (skora göre)
+        if score >= 85:
+            stars = "⭐⭐⭐⭐⭐"  # 5 yıldız
+        elif score >= 75:
+            stars = "⭐⭐⭐⭐"     # 4 yıldız
+        elif score >= 65:
+            stars = "⭐⭐⭐"       # 3 yıldız
+        else:
+            stars = "⭐⭐"        # 2 yıldız
+        
+        # Skor barı (görsel)
+        bar_length = int(score / 10)
+        bar = "█" * bar_length + "░" * (10 - bar_length)
+        
+        # Kart
+        msg += f"{medal} <b>{symbol}</b> {stars}\n"
+        msg += f"   💯 <b>{score}/100</b> <code>{bar}</code>\n"
+        msg += f"   💰 {price:.2f} TL → 🎯 <b>{target_1:.2f}</b> "
+        msg += f"(<b>+{target_1_pct}%</b>)\n\n"
     
-    msg += "\n━━━━━━━━━━━━━━━━━━━━━━━\n"
+    # Alt süsleme
+    msg += "━━━━━━━━━━━━━━━━━━━━━━━\n"
     msg += f"⏰ {tr_now().strftime('%H:%M - %d.%m.%Y')}\n"
     msg += "📩 <i>Detaylı kartlar geliyor...</i>"
     
@@ -171,19 +203,18 @@ def format_summary_card(signals, max_signals=5):
 
 
 # ════════════════════════════════════════════════════════════
-# PROFESYONEL SİNYAL FORMATLAMA - SWING OPTIMIZED
+# SİNYAL FORMATLAMA (RENKLİ ÇERÇEVE EKLENDİ!)
 # ════════════════════════════════════════════════════════════
 
-def format_signal_for_telegram(signal):
+def format_signal_for_telegram(signal, signal_index=1):
     """
     Sinyali Telegram için HTML formatında hazırla
-    SWING optimized + VWAP kaldırıldı + Tutma süresi
+    YENİ: Sıralı renkli çerçeve eklendi (signal_index parametresi)
     """
     if not signal:
         print("❌ Sinyal None geldi!")
         return None
     
-    # None koruması
     required = ['emoji', 'label', 'symbol', 'current_price', 'score', 
                 'score_bar', 'stars', 'confidence', 'action', 'targets']
     for field in required:
@@ -191,7 +222,6 @@ def format_signal_for_telegram(signal):
             print(f"❌ EKSİK ALAN: '{field}' is None")
             return None
     
-    # Targets kontrolü
     t = signal['targets']
     target_required = ['entry', 'target_1', 'target_2', 'target_3', 
                        'stop_loss', 'target_1_pct', 'target_2_pct',
@@ -201,7 +231,7 @@ def format_signal_for_telegram(signal):
             print(f"❌ TARGET EKSİK: '{field}' is None")
             return None
     
-    # Veriler (HTML escape ile)
+    # Veriler
     emoji = signal['emoji']
     label = escape_html(signal['label'])
     symbol = escape_html(signal['symbol'])
@@ -214,8 +244,17 @@ def format_signal_for_telegram(signal):
     risk_level = escape_html(signal.get('risk_level', '-'))
     holding = signal.get('holding', {})
     
+    # ⭐ YENİ: Sıralı renkli çerçeve
+    color = get_signal_color(signal_index)
+    medal = get_medal_emoji(signal_index)
+    
+    # ── RENKLİ ÇERÇEVE ÜST ──
+    msg = f"{color}{color}{color}{color}{color}{color}{color}{color}{color}{color}{color}{color}\n"
+    msg += f"     {medal} <b>SİNYAL #{signal_index}</b>\n"
+    msg += f"{color}{color}{color}{color}{color}{color}{color}{color}{color}{color}{color}{color}\n\n"
+    
     # ── BAŞLIK ──
-    msg = f"{emoji} <b>{label}</b>\n"
+    msg += f"{emoji} <b>{label}</b>\n"
     msg += "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
     
     # ── HİSSE BİLGİSİ ──
@@ -248,31 +287,26 @@ def format_signal_for_telegram(signal):
     msg += "💼 <b>İŞLEM PLANI - 3 HEDEF</b>\n"
     msg += "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
     
-    # ── GİRİŞ ──
     msg += f"📥 <b>GİRİŞ:</b> {t['entry']:.2f} TL\n\n"
     
-    # ── HEDEF 1 ──
     h1_days = "1-2 gün" if score >= 85 else "2-3 gün" if score >= 75 else "2-4 gün"
     msg += f"🎯 <b>HEDEF 1:</b> {t['target_1']:.2f} TL "
     msg += f"<b>(+{t['target_1_pct']}%)</b>\n"
     msg += f"   ⏰ <i>{h1_days}'de olası</i>\n"
     msg += f"   💡 <i>%33 sat, stop'u girişe çek</i>\n\n"
     
-    # ── HEDEF 2 ──
     h2_days = "2-3 gün" if score >= 85 else "3-4 gün" if score >= 75 else "3-5 gün"
     msg += f"🎯 <b>HEDEF 2:</b> {t['target_2']:.2f} TL "
     msg += f"<b>(+{t['target_2_pct']}%)</b>\n"
     msg += f"   ⏰ <i>{h2_days}'de olası</i>\n"
     msg += f"   💡 <i>%33 sat, stop'u Hedef 1'e çek</i>\n\n"
     
-    # ── HEDEF 3 ──
     h3_days = "3-5 gün" if score >= 85 else "4-7 gün" if score >= 75 else "5-10 gün"
     msg += f"🎯 <b>HEDEF 3:</b> {t['target_3']:.2f} TL "
     msg += f"<b>(+{t['target_3_pct']}%)</b>\n"
     msg += f"   ⏰ <i>{h3_days}'de olası</i>\n"
     msg += f"   💡 <i>Kalanı sat (trend kırılırsa)</i>\n\n"
     
-    # ── STOP ──
     msg += f"🛑 <b>STOP-LOSS:</b> {t['stop_loss']:.2f} TL "
     msg += f"<b>(-{t['stop_pct']}%)</b>\n"
     msg += f"⚖️ <b>Risk/Ödül:</b> 1 / {t['risk_reward']}\n\n"
@@ -357,7 +391,6 @@ def format_signal_for_telegram(signal):
         msg += "📍 <b>ÖNEMLİ SEVİYELER</b>\n"
         msg += "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         
-        # Pivot Points
         if kl.get('pivot'):
             arrow_pivot = "🟢" if price > kl['pivot'] else "🔴"
             msg += f"{arrow_pivot} Pivot   : <b>{kl['pivot']:.2f} TL</b>\n"
@@ -373,13 +406,11 @@ def format_signal_for_telegram(signal):
         if kl.get('s1'):
             msg += f"⬇️ S1      : <b>{kl['s1']:.2f} TL</b>\n"
         
-        # EMA değerleri
         if kl.get('ema_9'):
             msg += f"📊 EMA 9   : <b>{kl['ema_9']:.2f} TL</b>\n"
         if kl.get('ema_21'):
             msg += f"📊 EMA 21  : <b>{kl['ema_21']:.2f} TL</b>\n"
         
-        # Dün
         if kl.get('prev_day_high'):
             msg += f"📈 Dün H   : <b>{kl['prev_day_high']:.2f} TL</b>\n"
         if kl.get('prev_day_low'):
@@ -397,7 +428,7 @@ def format_signal_for_telegram(signal):
             msg += f"{icon} <i>{text}</i>\n"
         msg += "\n"
     
-    # ── ALT BİLGİ ──
+    # ── ALT BİLGİ (RENKLİ ÇERÇEVE ALT) ──
     msg += "━━━━━━━━━━━━━━━━━━━━━━━\n"
     if holding and holding.get('strategy') and holding.get('strategy') != 'YOK':
         strategy_name = holding.get('strategy', 'SWING')
@@ -405,7 +436,10 @@ def format_signal_for_telegram(signal):
         msg += f"⏱️ <i>{escape_html(strategy_name)} • Tutma: {escape_html(duration)}</i>\n"
     else:
         msg += f"⏱️ <i>SWING TRADE • Tutma: 2-5 gün</i>\n"
-    msg += f"🤖 <i>Borsa Sinyal Bot</i>\n"
+    msg += f"🤖 <i>Borsa Sinyal Bot</i>\n\n"
+    
+    # ⭐ YENİ: Renkli çerçeve alt
+    msg += f"{color}{color}{color}{color}{color}{color}{color}{color}{color}{color}{color}{color}"
     
     return msg
 
@@ -414,9 +448,9 @@ def format_signal_for_telegram(signal):
 # SİNYAL GÖNDERME
 # ════════════════════════════════════════════════════════════
 
-async def send_signal_async(signal):
-    """Tek sinyal gönder"""
-    msg = format_signal_for_telegram(signal)
+async def send_signal_async(signal, signal_index=1):
+    """Tek sinyal gönder (signal_index ile)"""
+    msg = format_signal_for_telegram(signal, signal_index)
     if msg:
         return await send_message_async(msg)
     else:
@@ -425,24 +459,20 @@ async def send_signal_async(signal):
 
 
 def send_signal(signal):
-    """Senkron sinyal gönderme"""
     try:
-        return asyncio.run(send_signal_async(signal))
+        return asyncio.run(send_signal_async(signal, 1))
     except Exception as e:
         print(f"❌ Sinyal gönderme hatası: {e}")
         return False
 
 
 async def send_multiple_signals_async(signals, max_signals=5):
-    """
-    Birden çok sinyali sırayla gönder
-    YENİ: Önce özet kart, sonra detaylı kartlar
-    """
+    """Birden çok sinyali sırayla gönder - RENKLI ÇERÇEVELI"""
     if not signals:
         await send_message_async("⚠️ <b>Şu an güçlü sinyal yok</b>")
         return 0
     
-    # 1️⃣ Özet mesaj (kaç sinyal bulundu)
+    # 1️⃣ Genel özet mesaj
     summary = f"""🔍 <b>BIST TARAMASI</b>
 ━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -454,7 +484,7 @@ async def send_multiple_signals_async(signals, max_signals=5):
     await send_message_async(summary.strip())
     await asyncio.sleep(1.5)
     
-    # 2️⃣ YENİ: TOP 5 ÖZET KART
+    # 2️⃣ Güzelleştirilmiş özet kart
     summary_card = format_summary_card(signals, max_signals)
     if summary_card:
         print(f"📤 Özet kart gönderiliyor...")
@@ -465,23 +495,22 @@ async def send_multiple_signals_async(signals, max_signals=5):
             print(f"   ❌ Özet kart gönderilemedi")
         await asyncio.sleep(2)
     
-    # 3️⃣ Detaylı kartlar
+    # 3️⃣ Renkli çerçeveli detaylı kartlar
     sent = 0
     for i, signal in enumerate(signals[:max_signals], 1):
         print(f"📤 Detaylı kart {i}/{min(len(signals), max_signals)} gönderiliyor: {signal.get('symbol')}")
-        success = await send_signal_async(signal)
+        success = await send_signal_async(signal, signal_index=i)  # ⭐ signal_index gönderiyoruz
         if success:
             sent += 1
             print(f"   ✅ Gönderildi")
         else:
             print(f"   ❌ Gönderilemedi")
-        await asyncio.sleep(2)  # Spam koruması
+        await asyncio.sleep(2)
     
     return sent
 
 
 def send_multiple_signals(signals, max_signals=5):
-    """Senkron çoklu sinyal"""
     try:
         return asyncio.run(send_multiple_signals_async(signals, max_signals))
     except Exception as e:
@@ -494,7 +523,6 @@ def send_multiple_signals(signals, max_signals=5):
 # ════════════════════════════════════════════════════════════
 
 def send_target_hit_alert(symbol, target_num, entry_price, target_price, current_price):
-    """Hedef'e ulaştığında uyarı"""
     profit_pct = ((current_price - entry_price) / entry_price) * 100
     symbol = escape_html(symbol)
     
@@ -526,7 +554,6 @@ def send_target_hit_alert(symbol, target_num, entry_price, target_price, current
 
 
 def send_stop_warning(symbol, entry_price, current_price, stop_loss):
-    """Stop'a yaklaştığında uyarı"""
     loss_pct = ((current_price - entry_price) / entry_price) * 100
     distance = ((current_price - stop_loss) / current_price) * 100
     symbol = escape_html(symbol)
@@ -548,7 +575,6 @@ def send_stop_warning(symbol, entry_price, current_price, stop_loss):
 
 
 def send_momentum_warning(symbol, current_price, entry_price, reason):
-    """Momentum azalma uyarısı"""
     profit_pct = ((current_price - entry_price) / entry_price) * 100
     symbol = escape_html(symbol)
     reason = escape_html(reason)
@@ -583,7 +609,6 @@ def send_momentum_warning(symbol, current_price, entry_price, reason):
 # ════════════════════════════════════════════════════════════
 
 async def send_test_message_async():
-    """Test mesajı"""
     msg = f"""🎉 <b>BORSA SİNYAL BOT - SWING OPTIMIZED</b>
 ━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -603,6 +628,7 @@ async def send_test_message_async():
 • Tutma süresi önerisi
 • Risk seviyesi göstergesi
 • Top 5 özet kart (YENİ!)
+• Renkli sinyal çerçeveleri (YENİ!)
 
 📋 <b>STRATEJİ:</b>
 • SWING TRADE (1-5 gün tutma)
@@ -619,7 +645,6 @@ async def send_test_message_async():
 
 
 def send_test_message():
-    """Senkron test"""
     try:
         return asyncio.run(send_test_message_async())
     except Exception as e:
@@ -659,7 +684,7 @@ if __name__ == "__main__":
     if choice == "1":
         print("\n📤 Test mesajı gönderiliyor...")
         if send_test_message():
-            print("✅ Mesaj gönderildi! Telefonu kontrol et 📱")
+            print("✅ Mesaj gönderildi!")
         else:
             print("❌ Hata oldu")
     
@@ -687,22 +712,15 @@ if __name__ == "__main__":
         
         if signals:
             print(f"\n✅ {len(signals)} sinyal bulundu")
-            print("📤 Telegram'a gönderiliyor...")
             sent = send_multiple_signals(signals, max_signals=3)
             print(f"✅ {sent} mesaj gönderildi!")
         else:
-            print("⚠️ Sinyal yok")
             send_message("⚠️ <b>Test:</b> Mevcut verilerde sinyal yok")
     
     elif choice == "3":
-        print("\n🎯 Hedef testi...")
         send_target_hit_alert("THYAO", 1, 285.50, 290.50, 290.80)
         print("✅ Gönderildi")
     
     elif choice == "4":
-        print("\n⚠️ Stop testi...")
         send_stop_warning("THYAO", 285.50, 283.20, 282.50)
         print("✅ Gönderildi")
-    
-    else:
-        print("❌ Geçersiz")
