@@ -10,6 +10,7 @@ GÜNCELLEMELER:
 - Risk seviyesi eklendi
 - Pivot Point güçlendirildi
 - TIMEZONE FIX: Türkiye saati (UTC+3) kullanılıyor
+- ⭐ GÜNLÜK YÜKSELİŞ BONUSU EKLENDİ (Tavan adayları yakalanır!)
 """
 
 import sys
@@ -246,11 +247,6 @@ def score_trend(analysis):
 def score_vwap_pivot(analysis):
     """
     Pivot Point puanı (VWAP KALDIRILDI - 15 puan tamamen Pivot'a)
-    
-    Eski sistem: VWAP (8) + Pivot (7) = 15 puan
-    Yeni sistem: Sadece Pivot (15 puan)
-    
-    Mantık: Pivot üstündeki hisseler yükselme eğiliminde
     """
     score = 0
     reasons = []
@@ -261,10 +257,6 @@ def score_vwap_pivot(analysis):
     r2 = analysis.get('r2')
     r3 = analysis.get('r3')
     s1 = analysis.get('s1')
-    
-    # ═══════════════════════════════════════════
-    # PİVOT POINT SKORU (15 puan - tamamı)
-    # ═══════════════════════════════════════════
     
     if not (current and pivot):
         return 0, []
@@ -304,10 +296,9 @@ def score_vwap_pivot(analysis):
     
     # Pivot-R1 arası (Pozitif hareket - 9 puan)
     elif r1 and current > pivot and current <= r1:
-        # R1'e ne kadar yakın?
         distance_to_r1 = ((r1 - current) / current) * 100
         
-        if distance_to_r1 < 1:  # R1'e %1'den yakın
+        if distance_to_r1 < 1:
             score = 10
             reasons.append({
                 'icon': '🎯', 'title': 'R1 YAKININDA',
@@ -455,11 +446,14 @@ def score_liquidity(analysis):
 
 
 # ════════════════════════════════════════════════════════════
-# TOPLAM PUAN
+# TOPLAM PUAN - GÜNLÜK YÜKSELİŞ BONUSU EKLENDİ!
 # ════════════════════════════════════════════════════════════
 
 def calculate_total_score(analysis):
-    """Tüm puanları topla"""
+    """
+    Tüm puanları topla
+    YENİ: Günlük yükseliş bonusu (tavan adaylarını yakalar!)
+    """
     vol_s, vol_r = score_volume(analysis)
     mom_s, mom_r = score_momentum(analysis)
     tre_s, tre_r = score_trend(analysis)
@@ -469,6 +463,78 @@ def calculate_total_score(analysis):
     
     total = vol_s + mom_s + tre_s + vwp_s + brk_s + liq_s
     all_reasons = vol_r + mom_r + tre_r + vwp_r + brk_r + liq_r
+    
+    # ⭐ YENİ: GÜNLÜK YÜKSELİŞ BONUSU (Önerilen versiyon - B seçeneği)
+    # Mevcut puanlama bozulmaz, sadece yükselişe bonus eklenir
+    # Sahte rally'ler hacim kontrolü ile filtrelenir
+    current_price = analysis.get('current_price')
+    prev_close = analysis.get('prev_close')
+    rvol = analysis.get('rvol', 1.0)
+    
+    if current_price and prev_close and prev_close > 0:
+        daily_change = ((current_price - prev_close) / prev_close) * 100
+        
+        bonus = 0
+        bonus_text = None
+        meaning = None
+        
+        if daily_change >= 8:
+            # Çok güçlü günlük yükseliş (tavan adayı)
+            if rvol >= 2:
+                bonus = 18
+                bonus_text = f'🚀 TAVAN ADAYI! +%{daily_change:.1f} + YÜKSEK HACİM'
+                meaning = 'Çok güçlü momentum - tavan olabilir'
+            elif rvol >= 1.5:
+                bonus = 15
+                bonus_text = f'🚀 GÜÇLÜ YÜKSELIŞ +%{daily_change:.1f}'
+                meaning = 'Tavan adayı - hacim destekli'
+            elif rvol >= 1.0:
+                bonus = 10
+                bonus_text = f'🚀 GÜNLÜK +%{daily_change:.1f}'
+                meaning = 'Güçlü yükseliş ama hacim sınırlı'
+            else:
+                bonus = 5
+                bonus_text = f'⚠️ +%{daily_change:.1f} (DÜŞÜK HACİM)'
+                meaning = 'Yükseliş var ama hacim yok - dikkat'
+        
+        elif daily_change >= 5:
+            # Orta güçlü günlük yükseliş
+            if rvol >= 1.5:
+                bonus = 12
+                bonus_text = f'📈 GÜÇLÜ GÜN +%{daily_change:.1f} + HACİM'
+                meaning = 'Sağlıklı yükseliş + hacim desteği'
+            elif rvol >= 1.0:
+                bonus = 8
+                bonus_text = f'📈 POZİTİF GÜN +%{daily_change:.1f}'
+                meaning = 'Yukarı yönlü hareket'
+            else:
+                bonus = 4
+                bonus_text = f'📊 +%{daily_change:.1f} (hacim zayıf)'
+                meaning = 'Yükseliş var ama hacim destek vermiyor'
+        
+        elif daily_change >= 3:
+            # Hafif yükseliş
+            if rvol >= 1.5:
+                bonus = 6
+                bonus_text = f'📊 POZİTİF +%{daily_change:.1f} + HACİM'
+                meaning = 'Hafif yükseliş, hacim destekli'
+            elif rvol >= 1.0:
+                bonus = 3
+                bonus_text = f'📊 +%{daily_change:.1f} yükseliş'
+                meaning = 'Pozitif gün'
+        
+        if bonus > 0:
+            total += bonus
+            if bonus_text:
+                all_reasons.append({
+                    'icon': '🚀' if daily_change >= 5 else '📈',
+                    'title': bonus_text,
+                    'detail': f'Önceki kapanış: {prev_close:.2f} TL → Şu an: {current_price:.2f} TL',
+                    'meaning': meaning
+                })
+    
+    # Maksimum 100 ile sınırla
+    total = min(total, 100)
     
     return {
         'total': total,
@@ -492,12 +558,6 @@ def calculate_targets(current_price, atr, analysis):
     """
     3 Hedef + Akıllı Stop - SWING için optimize
     DÜZELTİLDİ: Hedef sıralama garantisi (H1 < H2 < H3)
-    
-    SWING hedef yüzdeleri:
-    - Hedef 1: %3-4 (1-2 gün)
-    - Hedef 2: %5-7 (2-4 gün)
-    - Hedef 3: %8-12 (3-7 gün)
-    - Stop:    %2-3
     """
     if not atr or atr <= 0:
         atr_pct = 1.0
@@ -506,10 +566,10 @@ def calculate_targets(current_price, atr, analysis):
         atr_pct = max(0.5, min(atr_pct, 4))
     
     # SWING için optimize edilmiş yüzdeler
-    target_1_pct = atr_pct * 2.0    # %3-4 (1-2 gün)
-    target_2_pct = atr_pct * 3.5    # %5-7 (2-4 gün)
-    target_3_pct = atr_pct * 5.5    # %8-12 (3-7 gün)
-    stop_pct = atr_pct * 1.5         # %2-3 (rahat)
+    target_1_pct = atr_pct * 2.0
+    target_2_pct = atr_pct * 3.5
+    target_3_pct = atr_pct * 5.5
+    stop_pct = atr_pct * 1.5
     
     target_1 = round(current_price * (1 + target_1_pct / 100), 2)
     target_2 = round(current_price * (1 + target_2_pct / 100), 2)
@@ -522,25 +582,21 @@ def calculate_targets(current_price, atr, analysis):
     r3 = analysis.get('r3')
     
     # Pivot değerleri ile güçlendirme (hedef YUKARI çekilebilir)
-    # Hedef AŞAĞI çekilmez!
     if r2 and r2 > current_price:
-        # R2 hedef 2'den yüksekse R2'yi kullan
         if r2 > target_2:
             target_2 = round(r2, 2)
     
     if r3 and r3 > current_price:
-        # R3 hedef 3'ten yüksekse R3'ü kullan
         if r3 > target_3:
             target_3 = round(r3, 2)
     
     # ⭐ KRİTİK FIX: Hedef sıralaması garantisi
-    # Hedeflerin doğru sıralanması ZORUNLU (H1 < H2 < H3)
     if target_2 <= target_1:
-        target_2 = round(target_1 * 1.025, 2)  # En az %2.5 üstüne
+        target_2 = round(target_1 * 1.025, 2)
     if target_3 <= target_2:
-        target_3 = round(target_2 * 1.030, 2)  # En az %3 üstüne
+        target_3 = round(target_2 * 1.030, 2)
     
-    # Yüzdeleri yeniden hesapla (sıralama fix sonrası)
+    # Yüzdeleri yeniden hesapla
     target_1_pct = round(((target_1 - current_price) / current_price) * 100, 2)
     target_2_pct = round(((target_2 - current_price) / current_price) * 100, 2)
     target_3_pct = round(((target_3 - current_price) / current_price) * 100, 2)
@@ -651,10 +707,7 @@ def generate_warnings(analysis):
 # ════════════════════════════════════════════════════════════
 
 def determine_strength(score):
-    """
-    Puana göre sinyal sınıflandırması - SWING odaklı
-    Action mesajları sakinleştirildi (day trade dili → swing dili)
-    """
+    """Puana göre sinyal sınıflandırması - SWING odaklı"""
     if score >= 85:
         return {
             'type': 'AL', 'strength': 'COK_GUCLU',
@@ -707,20 +760,13 @@ def determine_strength(score):
 # ════════════════════════════════════════════════════════════
 
 def suggest_holding_period(score, indicators):
-    """
-    Skora ve indikatörlere göre tutma süresi öner
-    SWING TRADE için optimize
-    
-    Returns:
-        dict: {duration, strategy, reason, max_days}
-    """
+    """Skora ve indikatörlere göre tutma süresi öner"""
     rsi = indicators.get('rsi', 50)
     rvol = indicators.get('rvol', 1)
     macd = indicators.get('macd', 0)
     adx = indicators.get('adx', 0)
     
     if score >= 85:
-        # Çok güçlü - hızlı momentum
         return {
             'duration': '1-2 gün',
             'strategy': 'HIZLI SWING',
@@ -728,7 +774,6 @@ def suggest_holding_period(score, indicators):
             'max_days': 3
         }
     elif score >= 75:
-        # Güçlü - standart swing
         return {
             'duration': '2-4 gün',
             'strategy': 'STANDART SWING',
@@ -736,7 +781,6 @@ def suggest_holding_period(score, indicators):
             'max_days': 5
         }
     elif score >= 65:
-        # Normal - sabırlı swing
         return {
             'duration': '3-7 gün',
             'strategy': 'UZUN SWING',
@@ -744,7 +788,6 @@ def suggest_holding_period(score, indicators):
             'max_days': 10
         }
     elif score >= 50:
-        # Bekleme
         return {
             'duration': '-',
             'strategy': 'BEKLEME',
@@ -765,10 +808,7 @@ def suggest_holding_period(score, indicators):
 # ════════════════════════════════════════════════════════════
 
 def generate_signal(symbol, analysis, history_df=None):
-    """
-    Tam profesyonel sinyal üret - SWING optimized
-    YENİ: Tutma süresi önerisi, risk seviyesi
-    """
+    """Tam profesyonel sinyal üret - SWING optimized"""
     if not analysis:
         return None
     
@@ -784,7 +824,6 @@ def generate_signal(symbol, analysis, history_df=None):
     targets = calculate_targets(current_price, atr, analysis)
     warnings, suggestions = generate_warnings(analysis)
     
-    # İndikatörleri topla (suggest_holding için)
     indicators = {
         'rsi': analysis.get('rsi'),
         'macd': analysis.get('macd'),
@@ -794,7 +833,6 @@ def generate_signal(symbol, analysis, history_df=None):
         'atr': analysis.get('atr'),
     }
     
-    # Tutma süresi önerisi
     holding = suggest_holding_period(total_score, indicators)
     
     # Skor bar
@@ -814,9 +852,7 @@ def generate_signal(symbol, analysis, history_df=None):
     else:
         stars = '⚪⚪⚪⚪⚪'
     
-    # Anahtar seviyeler (VWAP kaldırıldı)
     key_levels = {
-        # 'vwap': None,  # VWAP kaldırıldı - günlük veride yanlış
         'pivot': analysis.get('pivot'),
         'r1': analysis.get('r1'),
         'r2': analysis.get('r2'),
@@ -832,7 +868,7 @@ def generate_signal(symbol, analysis, history_df=None):
     signal = {
         'symbol': symbol.replace('.IS', ''),
         'full_symbol': symbol,
-        'timestamp': tr_now().isoformat(),  # TR saati
+        'timestamp': tr_now().isoformat(),
         'current_price': current_price,
         'score': total_score,
         'score_bar': score_bar,
@@ -882,7 +918,6 @@ def format_signal_message(signal):
     msg.append(f"║  {signal['stars']}")
     msg.append(f"║  📊 {signal['confidence']}")
     
-    # Strateji bilgisi
     holding = signal.get('holding', {})
     if holding and holding.get('strategy') and holding.get('strategy') != 'YOK':
         msg.append("╠══════════════════════════════════════╣")
