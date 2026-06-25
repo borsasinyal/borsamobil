@@ -43,6 +43,7 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install flask yfinance pandas numpy python-telegram-bot apscheduler requests
+          pip install --upgrade git+https://github.com/StreamAlpha/tvdatafeed.git
       
       - name: Veritabani baslat
         env:
@@ -55,6 +56,8 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TV_USERNAME: ${{ secrets.TV_USERNAME }}
+          TV_PASSWORD: ${{ secrets.TV_PASSWORD }}
         run: |
           python << 'EOF'
           import sys
@@ -67,7 +70,7 @@ jobs:
           print("=" * 60)
           fetch_all_daily(symbols_list=BIST_SYMBOLS, delay=0.05)
           
-          # 2. SONRA GÖREVİ ÇALIŞTIR (aynı Python sürecinde!)
+          # 2. SONRA GÖREVİ ÇALIŞTIR
           print("=" * 60)
           print("🎯 2. AŞAMA: GÖREV ÇALIŞTIRILIYOR")
           print("=" * 60)
@@ -109,6 +112,8 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TV_USERNAME: ${{ secrets.TV_USERNAME }}
+          TV_PASSWORD: ${{ secrets.TV_PASSWORD }}
         run: |
           python -c "from services.signal_tracker import track_signals_job; track_signals_job()"
       
