@@ -1,9 +1,6 @@
 """
-Profesyonel Teknik Analiz Motoru - Day Trading
-VWAP, Pivot, Supertrend, Mum Formasyonları, Multi-TF
-
-NOT: VWAP KALDIRILDI - Günlük veride yanlış hesap yapıyordu
-     (cumsum 365 gün toplam = anlamsız değer)
+Profesyonel Teknik Analiz Motoru
+WaveTrend + SMI eklendi, Stochastic kaldırıldı
 """
 
 import pandas as pd
@@ -58,16 +55,6 @@ def calculate_sma(data, period):
     return data['close'].rolling(window=period).mean()
 
 
-def calculate_stochastic(data, period=14, smooth_k=3, smooth_d=3):
-    """Stochastic Oscillator"""
-    low_min = data['low'].rolling(window=period).min()
-    high_max = data['high'].rolling(window=period).max()
-    k = 100 * ((data['close'] - low_min) / (high_max - low_min))
-    k_smooth = k.rolling(window=smooth_k).mean()
-    d = k_smooth.rolling(window=smooth_d).mean()
-    return k_smooth, d
-
-
 def calculate_atr(data, period=14):
     """ATR - Volatilite"""
     high_low = data['high'] - data['low']
@@ -105,19 +92,83 @@ def calculate_adx(data, period=14):
 
 
 # ════════════════════════════════════════════════════════════
-# VWAP KALDIRILDI - Günlük veride yanlış hesap yapıyordu
+# YENİ: WAVETREND OSCILLATOR (LazyBear)
 # ════════════════════════════════════════════════════════════
-# def calculate_vwap(data):
-#     """
-#     VWAP (Volume Weighted Average Price)
-#     KALDIRILDI: cumsum (365 gün toplam) anlamsız değer üretiyordu
-#     Örnek: OSMEN fiyat 7.98 TL, VWAP 8.92 TL gösteriyordu (yanlış!)
-#     """
-#     typical_price = (data['high'] + data['low'] + data['close']) / 3
-#     cumulative_tp_vol = (typical_price * data['volume']).cumsum()
-#     cumulative_vol = data['volume'].cumsum()
-#     vwap = cumulative_tp_vol / cumulative_vol.replace(0, 1)
-#     return vwap
+
+def calculate_wavetrend(data, channel_length=10, average_length=21, ma_length=4):
+    """
+    WaveTrend Oscillator
+    
+    WT1 ve WT2 olmak üzere 2 çizgi
+    WT1 > WT2 → Yükseliş
+    WT1 < WT2 → Düşüş
+    
+    Aşırı bölgeler:
+    -53 altı → Aşırı satım (AL fırsatı)
+    +53 üstü → Aşırı alım (SAT sinyali)
+    """
+    # HLC3 (typical price)
+    hlc3 = (data['high'] + data['low'] + data['close']) / 3
+    
+    # ESA (Exponential Smoothing Average)
+    esa = hlc3.ewm(span=channel_length, adjust=False).mean()
+    
+    # Deviation
+    d = (hlc3 - esa).abs().ewm(span=channel_length, adjust=False).mean()
+    
+    # CI (Channel Index)
+    ci = (hlc3 - esa) / (0.015 * d)
+    
+    # WT1 (Wave Trend 1)
+    wt1 = ci.ewm(span=average_length, adjust=False).mean()
+    
+    # WT2 (Wave Trend 2) - WT1'in MA'sı
+    wt2 = wt1.rolling(window=ma_length).mean()
+    
+    return wt1, wt2
+
+
+# ════════════════════════════════════════════════════════════
+# YENİ: SMI (Stochastic Momentum Index)
+# ════════════════════════════════════════════════════════════
+
+def calculate_smi(data, k_period=10, k_smooth=3, d_smooth=3):
+    """
+    SMI - Stochastic Momentum Index
+    
+    Standart Stochastic'in geliştirilmiş hali
+    Daha az gürültü, daha doğru sinyaller
+    
+    -40 altı → Aşırı satım (AL)
+    +40 üstü → Aşırı alım (SAT)
+    0 çizgisi → Trend dönüşü
+    
+    SMI > Signal → Yükseliş
+    SMI < Signal → Düşüş
+    """
+    high_n = data['high'].rolling(window=k_period).max()
+    low_n = data['low'].rolling(window=k_period).min()
+    
+    midpoint = (high_n + low_n) / 2
+    range_hl = high_n - low_n
+    
+    # Diff between close and midpoint
+    diff = data['close'] - midpoint
+    
+    # Double smoothing
+    diff_smooth1 = diff.ewm(span=k_smooth, adjust=False).mean()
+    diff_smooth2 = diff_smooth1.ewm(span=k_smooth, adjust=False).mean()
+    
+    range_smooth1 = range_hl.ewm(span=k_smooth, adjust=False).mean()
+    range_smooth2 = range_smooth1.ewm(span=k_smooth, adjust=False).mean()
+    
+    # SMI
+    smi = 100 * (diff_smooth2 / (range_smooth2 / 2))
+    
+    # Signal line
+    smi_signal = smi.ewm(span=d_smooth, adjust=False).mean()
+    
+    return smi, smi_signal
 
 
 # ════════════════════════════════════════════════════════════
@@ -125,11 +176,7 @@ def calculate_adx(data, period=14):
 # ════════════════════════════════════════════════════════════
 
 def calculate_pivot_points(data):
-    """
-    Pivot Points (P, R1, R2, R3, S1, S2, S3)
-    Önceki günün H/L/C verisinden hesaplanır
-    Gün içi destek/direnç seviyeleri
-    """
+    """Pivot Points"""
     prev_high = data['high'].shift(1)
     prev_low = data['low'].shift(1)
     prev_close = data['close'].shift(1)
@@ -146,11 +193,7 @@ def calculate_pivot_points(data):
 
 
 def calculate_supertrend(data, period=10, multiplier=3):
-    """
-    Supertrend - Trend yönü belirleyici
-    Yeşil = Yükseliş trendi
-    Kırmızı = Düşüş trendi
-    """
+    """Supertrend"""
     atr = calculate_atr(data, period)
 
     hl2 = (data['high'] + data['low']) / 2
@@ -180,23 +223,14 @@ def calculate_supertrend(data, period=10, multiplier=3):
 
 
 def calculate_relative_volume(data, period=20):
-    """
-    Göreceli Hacim (RVOL)
-    1.0 = Normal
-    2.0 = 2 kat normalin üstünde
-    3.0+ = Anormal yüksek (dikkat!)
-    """
+    """Göreceli Hacim (RVOL)"""
     avg_volume = data['volume'].rolling(window=period).mean()
     rvol = data['volume'] / avg_volume.replace(0, 1)
     return rvol
 
 
 def calculate_obv(data):
-    """
-    OBV (On Balance Volume) - Akıllı para takibi
-    Fiyat düşerken OBV yükselirse → Dip alım (pozitif divergence)
-    Fiyat yükselirken OBV düşerse → Dağıtım (negatif divergence)
-    """
+    """OBV - On Balance Volume"""
     obv = pd.Series(0, index=data.index, dtype=float)
     for i in range(1, len(data)):
         if data['close'].iloc[i] > data['close'].iloc[i - 1]:
@@ -208,31 +242,12 @@ def calculate_obv(data):
     return obv
 
 
-def calculate_williams_r(data, period=14):
-    """Williams %R - Momentum"""
-    high_max = data['high'].rolling(window=period).max()
-    low_min = data['low'].rolling(window=period).min()
-    wr = -100 * ((high_max - data['close']) / (high_max - low_min).replace(0, 1))
-    return wr
-
-
-def calculate_cci(data, period=20):
-    """CCI - Commodity Channel Index"""
-    tp = (data['high'] + data['low'] + data['close']) / 3
-    sma_tp = tp.rolling(window=period).mean()
-    mean_dev = tp.rolling(window=period).apply(lambda x: np.abs(x - x.mean()).mean())
-    cci = (tp - sma_tp) / (0.015 * mean_dev.replace(0, 1))
-    return cci
-
-
 # ════════════════════════════════════════════════════════════
-# MUM FORMASYONLARI (Candlestick Patterns)
+# MUM FORMASYONLARI
 # ════════════════════════════════════════════════════════════
 
 def detect_candle_patterns(data):
-    """
-    10 kritik mum formasyonu tespit eder
-    """
+    """10 kritik mum formasyonu"""
     patterns = {}
 
     o = data['open']
@@ -244,21 +259,18 @@ def detect_candle_patterns(data):
     lower_shadow = pd.concat([c, o], axis=1).min(axis=1) - l
     total_range = (h - l).replace(0, 0.001)
 
-    # 1. Hammer (Çekiç) - Dönüş yukarı
     patterns['hammer'] = (
             (lower_shadow >= body * 2) &
             (upper_shadow <= body * 0.3) &
             (body > 0)
     )
 
-    # 2. Inverted Hammer (Ters Çekiç) - Dönüş yukarı
     patterns['inverted_hammer'] = (
             (upper_shadow >= body * 2) &
             (lower_shadow <= body * 0.3) &
             (body > 0)
     )
 
-    # 3. Shooting Star (Kayan Yıldız) - Dönüş aşağı
     patterns['shooting_star'] = (
             (upper_shadow >= body * 2) &
             (lower_shadow <= body * 0.3) &
@@ -266,10 +278,8 @@ def detect_candle_patterns(data):
             (body > 0)
     )
 
-    # 4. Doji - Kararsızlık
     patterns['doji'] = (body <= total_range * 0.1)
 
-    # 5. Bullish Engulfing (Yutan Boğa) - Güçlü dönüş yukarı
     prev_body_neg = data['close'].shift(1) < data['open'].shift(1)
     patterns['bullish_engulfing'] = (
             prev_body_neg &
@@ -278,7 +288,6 @@ def detect_candle_patterns(data):
             (o < data['close'].shift(1))
     )
 
-    # 6. Bearish Engulfing (Yutan Ayı) - Güçlü dönüş aşağı
     prev_body_pos = data['close'].shift(1) > data['open'].shift(1)
     patterns['bearish_engulfing'] = (
             prev_body_pos &
@@ -287,7 +296,6 @@ def detect_candle_patterns(data):
             (o > data['close'].shift(1))
     )
 
-    # 7. Morning Star (Sabah Yıldızı) - Güçlü dönüş yukarı (3 mum)
     prev2_bear = data['close'].shift(2) < data['open'].shift(2)
     prev1_small = abs(data['close'].shift(1) - data['open'].shift(1)) <= total_range.shift(1) * 0.3
     patterns['morning_star'] = (
@@ -297,7 +305,6 @@ def detect_candle_patterns(data):
             (c > (data['open'].shift(2) + data['close'].shift(2)) / 2)
     )
 
-    # 8. Evening Star (Akşam Yıldızı) - Güçlü dönüş aşağı (3 mum)
     prev2_bull = data['close'].shift(2) > data['open'].shift(2)
     patterns['evening_star'] = (
             prev2_bull &
@@ -306,7 +313,6 @@ def detect_candle_patterns(data):
             (c < (data['open'].shift(2) + data['close'].shift(2)) / 2)
     )
 
-    # 9. Three White Soldiers (3 Beyaz Asker) - Güçlü yükseliş
     patterns['three_white_soldiers'] = (
             (c > o) &
             (data['close'].shift(1) > data['open'].shift(1)) &
@@ -315,7 +321,6 @@ def detect_candle_patterns(data):
             (data['close'].shift(1) > data['close'].shift(2))
     )
 
-    # 10. Three Black Crows (3 Kara Karga) - Güçlü düşüş
     patterns['three_black_crows'] = (
             (c < o) &
             (data['close'].shift(1) < data['open'].shift(1)) &
@@ -369,9 +374,7 @@ def get_active_patterns(patterns, index=-1):
 # ════════════════════════════════════════════════════════════
 
 def detect_breakouts(data, lookback_periods=[5, 10, 20, 50]):
-    """
-    Çeşitli periyotlarda kırılım tespiti
-    """
+    """Kırılım tespiti"""
     breakouts = []
     current_price = data['close'].iloc[-1]
     current_volume = data['volume'].iloc[-1]
@@ -384,7 +387,6 @@ def detect_breakouts(data, lookback_periods=[5, 10, 20, 50]):
         high_n = data['high'].tail(period).max()
         low_n = data['low'].tail(period).min()
 
-        # Yukarı kırılım
         if current_price >= high_n and current_volume > avg_volume * 1.5:
             breakouts.append({
                 'type': 'UP',
@@ -394,8 +396,6 @@ def detect_breakouts(data, lookback_periods=[5, 10, 20, 50]):
                 'detail': f'{period} günlük zirve kırıldı ({high_n:.2f} TL)',
                 'meaning': f'{period} gündür görülmemiş seviye, hacimle kırılım'
             })
-
-        # Aşağı kırılım (uyarı)
         elif current_price <= low_n:
             breakouts.append({
                 'type': 'DOWN',
@@ -410,16 +410,11 @@ def detect_breakouts(data, lookback_periods=[5, 10, 20, 50]):
 
 
 def detect_support_resistance(data, window=20):
-    """
-    Dinamik destek ve direnç seviyeleri
-    """
+    """Destek/Direnç"""
     levels = []
-
-    # Son window gün içindeki önemli seviyeler
     recent = data.tail(window)
     current_price = data['close'].iloc[-1]
 
-    # Direnç seviyeleri (fiyatın üstü)
     highs = recent['high'].nlargest(3).values
     for h in highs:
         if h > current_price * 1.005:
@@ -429,7 +424,6 @@ def detect_support_resistance(data, window=20):
                 'distance_pct': round(((h - current_price) / current_price) * 100, 2)
             })
 
-    # Destek seviyeleri (fiyatın altı)
     lows = recent['low'].nsmallest(3).values
     for lo in lows:
         if lo < current_price * 0.995:
@@ -447,10 +441,7 @@ def detect_support_resistance(data, window=20):
 # ════════════════════════════════════════════════════════════
 
 def detect_momentum_status(data, analysis):
-    """
-    Momentum güçleniyor mu, zayıflıyor mu?
-    Kar al uyarısı gerekiyor mu?
-    """
+    """Momentum durumu"""
     status = {
         'direction': 'NEUTRAL',
         'strength': 'NORMAL',
@@ -464,7 +455,6 @@ def detect_momentum_status(data, analysis):
     prev_macd_hist = analysis.get('prev_macd_hist')
     volume_ratio = analysis.get('rvol')
 
-    # RSI momentum kontrolü
     if rsi and prev_rsi:
         if rsi > prev_rsi and rsi > 50:
             status['direction'] = 'UP'
@@ -473,7 +463,6 @@ def detect_momentum_status(data, analysis):
             status['warning'] = '⚠️ RSI zayıflıyor, momentum azalıyor'
             status['suggestion'] = 'Kısmi kar al düşün'
 
-    # MACD histogram kontrolü
     if macd_hist is not None and prev_macd_hist is not None:
         if macd_hist > 0 and macd_hist < prev_macd_hist:
             if status['direction'] != 'WEAKENING':
@@ -481,7 +470,6 @@ def detect_momentum_status(data, analysis):
             status['warning'] = '⚠️ MACD histogram azalıyor'
             status['suggestion'] = 'Kârdasın ise kısmi satış düşün'
 
-    # Aşırı alım bölgesi
     if rsi and rsi > 75:
         status['direction'] = 'OVERBOUGHT'
         status['warning'] = '🔴 RSI aşırı alım bölgesinde!'
@@ -493,7 +481,6 @@ def detect_momentum_status(data, analysis):
         status['suggestion'] = 'HEMEN KAR AL!'
         status['strength'] = 'EXTREME'
 
-    # Hacim düşüşü kontrolü
     if volume_ratio and volume_ratio < 0.5:
         if status['warning']:
             status['warning'] += '\n⚠️ Hacim çok düşük, hareket sahte olabilir'
@@ -508,16 +495,13 @@ def detect_momentum_status(data, analysis):
 # ════════════════════════════════════════════════════════════
 
 def analyze_stock(df):
-    """
-    Bir hisse için TÜM profesyonel indikatörleri hesaplar
-    NOT: VWAP kaldırıldı - günlük veride yanlış hesap yapıyordu
-    """
+    """Tüm indikatörleri hesapla"""
     if len(df) < 50:
         return None
 
     df = df.sort_values('date').reset_index(drop=True)
 
-    # ── TEMEL İNDİKATÖRLER ──
+    # Temel indikatörler
     df['rsi'] = calculate_rsi(df)
     df['macd'], df['macd_signal'], df['macd_hist'] = calculate_macd(df)
     df['bb_upper'], df['bb_middle'], df['bb_lower'], df['bb_width'] = calculate_bollinger_bands(df)
@@ -525,17 +509,27 @@ def analyze_stock(df):
     df['ema_21'] = calculate_ema(df, 21)
     df['ema_50'] = calculate_ema(df, 50)
     df['sma_200'] = calculate_sma(df, 200) if len(df) >= 200 else pd.Series([None] * len(df))
-    df['stoch_k'], df['stoch_d'] = calculate_stochastic(df)
     df['atr'] = calculate_atr(df)
+
+    # YENİ: WaveTrend
+    try:
+        df['wt1'], df['wt2'] = calculate_wavetrend(df)
+    except Exception:
+        df['wt1'] = df['wt2'] = pd.Series([None] * len(df))
+
+    # YENİ: SMI (Stochastic yerine)
+    try:
+        df['smi'], df['smi_signal'] = calculate_smi(df)
+    except Exception:
+        df['smi'] = df['smi_signal'] = pd.Series([None] * len(df))
 
     try:
         df['adx'], df['plus_di'], df['minus_di'] = calculate_adx(df)
     except Exception:
         df['adx'] = df['plus_di'] = df['minus_di'] = pd.Series([None] * len(df))
 
-    # ── PROFESYONEL İNDİKATÖRLER ──
-    # VWAP KALDIRILDI - günlük veride yanlış hesap yapıyordu
-    df['vwap'] = pd.Series([None] * len(df))  # VWAP devre dışı
+    # Profesyonel
+    df['vwap'] = pd.Series([None] * len(df))
     df['pivot'], df['r1'], df['r2'], df['r3'], df['s1'], df['s2'], df['s3'] = calculate_pivot_points(df)
 
     try:
@@ -545,27 +539,27 @@ def analyze_stock(df):
 
     df['rvol'] = calculate_relative_volume(df)
     df['obv'] = calculate_obv(df)
-    df['williams_r'] = calculate_williams_r(df)
-    df['cci'] = calculate_cci(df)
 
-    # ── MUM FORMASYONLARI ──
+    # Mum formasyonları
     patterns = detect_candle_patterns(df)
     active_patterns = get_active_patterns(patterns, -1)
 
-    # ── KIRILIMLAR ──
+    # Kırılımlar
     breakouts = detect_breakouts(df)
 
-    # ── DESTEK/DİRENÇ ──
+    # Destek/Direnç
     sr_levels = detect_support_resistance(df)
 
-    # ── ÖNCEKİ GÜN VERİLERİ ──
+    # Önceki gün
     prev_day_high = float(df['high'].iloc[-2]) if len(df) > 1 else None
     prev_day_low = float(df['low'].iloc[-2]) if len(df) > 1 else None
     prev_day_close = float(df['close'].iloc[-2]) if len(df) > 1 else None
 
     last = df.iloc[-1]
     prev = df.iloc[-2] if len(df) > 1 else last
-    prev2 = df.iloc[-3] if len(df) > 2 else prev
+
+    # Hacim ortalaması (5 gün)
+    avg_volume_5 = float(df['volume'].tail(5).mean()) if len(df) >= 5 else 0
 
     def sf(value):
         """Safe float"""
@@ -579,14 +573,13 @@ def analyze_stock(df):
             return None
 
     result = {
-        # Fiyat
         'current_price': sf(last['close']),
         'open': sf(last['open']),
         'high': sf(last['high']),
         'low': sf(last['low']),
         'volume': sf(last['volume']),
+        'avg_volume_5': avg_volume_5,
 
-        # Temel
         'rsi': sf(last['rsi']),
         'prev_rsi': sf(prev['rsi']),
         'macd': sf(last['macd']),
@@ -596,13 +589,11 @@ def analyze_stock(df):
         'prev_macd_signal': sf(prev['macd_signal']),
         'prev_macd_hist': sf(prev['macd_hist']),
 
-        # Bollinger
         'bb_upper': sf(last['bb_upper']),
         'bb_middle': sf(last['bb_middle']),
         'bb_lower': sf(last['bb_lower']),
         'bb_width': sf(last['bb_width']),
 
-        # EMA'lar
         'ema_9': sf(last['ema_9']),
         'ema_21': sf(last['ema_21']),
         'ema_50': sf(last['ema_50']),
@@ -611,18 +602,24 @@ def analyze_stock(df):
         'prev_ema_21': sf(prev['ema_21']),
         'prev_ema_50': sf(prev['ema_50']),
 
-        # Stochastic
-        'stoch_k': sf(last['stoch_k']),
-        'stoch_d': sf(last['stoch_d']),
+        # WaveTrend
+        'wt1': sf(last['wt1']),
+        'wt2': sf(last['wt2']),
+        'prev_wt1': sf(prev['wt1']),
+        'prev_wt2': sf(prev['wt2']),
 
-        # ATR & ADX
+        # SMI (Stochastic yerine)
+        'smi': sf(last['smi']),
+        'smi_signal': sf(last['smi_signal']),
+        'prev_smi': sf(prev['smi']),
+        'prev_smi_signal': sf(prev['smi_signal']),
+
         'atr': sf(last['atr']),
         'adx': sf(last['adx']),
         'plus_di': sf(last['plus_di']),
         'minus_di': sf(last['minus_di']),
 
-        # Profesyonel
-        'vwap': None,  # VWAP KALDIRILDI - günlük veride yanlış hesap
+        'vwap': None,
         'pivot': sf(last['pivot']),
         'r1': sf(last['r1']),
         'r2': sf(last['r2']),
@@ -634,26 +631,17 @@ def analyze_stock(df):
         'supertrend_dir': sf(last['supertrend_dir']),
         'rvol': sf(last['rvol']),
         'obv': sf(last['obv']),
-        'williams_r': sf(last['williams_r']),
-        'cci': sf(last['cci']),
 
-        # Önceki gün
         'prev_day_high': prev_day_high,
         'prev_day_low': prev_day_low,
         'prev_day_close': prev_day_close,
         'prev_close': sf(prev['close']),
 
-        # Mum formasyonları
         'candle_patterns': active_patterns,
-
-        # Kırılımlar
         'breakouts': breakouts,
-
-        # Destek/Direnç
         'support_resistance': sr_levels,
     }
 
-    # Momentum durumu
     result['momentum_status'] = detect_momentum_status(df, result)
 
     return result
@@ -667,56 +655,19 @@ def print_analysis(symbol, result):
 
     p = result
     print(f"\n{'='*60}")
-    print(f"📊 {symbol} - PROFESYONEL ANALİZ")
+    print(f"📊 {symbol}")
     print(f"{'='*60}")
     print(f"💰 Fiyat: {p['current_price']:.2f} TL")
-
-    print(f"\n📈 MOMENTUM:")
-    if p['rsi']: print(f"   RSI       : {p['rsi']:.1f}")
-    if p['stoch_k']: print(f"   Stoch K   : {p['stoch_k']:.1f}")
-    if p['williams_r']: print(f"   Williams  : {p['williams_r']:.1f}")
-    if p['cci']: print(f"   CCI       : {p['cci']:.1f}")
-
-    print(f"\n📊 TREND:")
-    if p['macd']: print(f"   MACD      : {p['macd']:.4f}")
-    if p['ema_9']: print(f"   EMA 9     : {p['ema_9']:.2f}")
-    if p['ema_21']: print(f"   EMA 21    : {p['ema_21']:.2f}")
-    if p['ema_50']: print(f"   EMA 50    : {p['ema_50']:.2f}")
-    if p['adx']: print(f"   ADX       : {p['adx']:.1f}")
-    if p['supertrend_dir']: print(f"   Supertrend: {'🟢 YUKARI' if p['supertrend_dir'] == 1 else '🔴 AŞAĞI'}")
-
-    print(f"\n⭐ PİVOT POINTS:")
-    if p['pivot']: print(f"   Pivot     : {p['pivot']:.2f}")
-    if p['r1']: print(f"   R1        : {p['r1']:.2f}")
-    if p['r2']: print(f"   R2        : {p['r2']:.2f}")
-    if p['s1']: print(f"   S1        : {p['s1']:.2f}")
-
-    print(f"\n💥 HACİM:")
-    if p['rvol']: print(f"   RVOL      : {p['rvol']:.2f}x  {'🔥' if p['rvol'] > 2 else '🟡' if p['rvol'] > 1.5 else ''}")
-
-    if p['candle_patterns']:
-        print(f"\n🕯️ MUM FORMASYONLARI:")
-        for cp in p['candle_patterns']:
-            print(f"   {cp['icon']} {cp['name']}: {cp['meaning']}")
-
-    if p['breakouts']:
-        print(f"\n🚀 KIRILIMLAR:")
-        for br in p['breakouts']:
-            print(f"   {br['icon']} {br['detail']}")
-
-    if p['momentum_status']['warning']:
-        print(f"\n⚠️ MOMENTUM UYARISI:")
-        print(f"   {p['momentum_status']['warning']}")
-        if p['momentum_status']['suggestion']:
-            print(f"   💡 {p['momentum_status']['suggestion']}")
-
-    print(f"{'='*60}\n")
+    if p['rsi']: print(f"RSI: {p['rsi']:.1f}")
+    if p['wt1'] and p['wt2']: print(f"WT1: {p['wt1']:.2f} | WT2: {p['wt2']:.2f}")
+    if p['smi'] and p['smi_signal']: print(f"SMI: {p['smi']:.2f} | Signal: {p['smi_signal']:.2f}")
+    if p['rvol']: print(f"RVOL: {p['rvol']:.2f}x")
 
 
 if __name__ == "__main__":
     from database import get_stock_history
 
-    test_symbols = ["AKBNK.IS", "THYAO.IS", "ASELS.IS", "AEFES.IS", "AKSA.IS"]
+    test_symbols = ["AKBNK.IS", "THYAO.IS"]
 
     for symbol in test_symbols:
         print(f"\n🧪 Test: {symbol}")
@@ -725,7 +676,3 @@ if __name__ == "__main__":
             df = pd.DataFrame(data)
             result = analyze_stock(df)
             print_analysis(symbol, result)
-        else:
-            print(f"   ❌ Veri yok")
-
-    print("\n✅ Tüm testler tamamlandı!")
