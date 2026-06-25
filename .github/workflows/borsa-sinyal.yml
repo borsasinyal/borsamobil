@@ -50,8 +50,8 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python database.py
       
-      - name: Gunluk veriyi cek (sadece tarama gorevlerinde)
-        if: ${{ github.event.inputs.job_type != 'signal_tracker' && github.event.inputs.job_type != 'end_of_day_report' }}
+      - name: Gunluk veriyi cek
+        if: ${{ github.event.inputs.job_type != 'signal_tracker' }}
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
