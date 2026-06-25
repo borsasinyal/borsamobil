@@ -1,6 +1,6 @@
 """
 Telegram Bot - Profesyonel Sinyal Gönderici
-SWING TRADE optimized + Renkli kartlar + Güzel özet
+SWING TRADE optimized + Renkli kartlar + Tavan Adayı işareti
 """
 
 import sys
@@ -37,7 +37,7 @@ def escape_html(text):
 
 
 # ════════════════════════════════════════════════════════════
-# YENİ: SİNYAL SIRASINA GÖRE RENK
+# RENKLER VE EMOJI
 # ════════════════════════════════════════════════════════════
 
 def get_signal_color(signal_index):
@@ -48,8 +48,8 @@ def get_signal_color(signal_index):
         3: '🟣',  # Mor
         4: '🟡',  # Sarı
         5: '🟠',  # Turuncu
-        6: '🔴',  # Kırmızı (varsa)
-        7: '⚪',  # Beyaz (varsa)
+        6: '⚪',
+        7: '⚫',
     }
     return colors.get(signal_index, '⚪')
 
@@ -57,13 +57,34 @@ def get_signal_color(signal_index):
 def get_medal_emoji(rank):
     """Sıralamaya göre madalya emoji"""
     medals = {
-        1: '🥇',  # Altın
-        2: '🥈',  # Gümüş
-        3: '🥉',  # Bronz
-        4: '🏅',  # Madalya
-        5: '🎖️',  # Madalya
+        1: '🥇',
+        2: '🥈',
+        3: '🥉',
+        4: '🏅',
+        5: '🎖️',
     }
     return medals.get(rank, f"{rank}.")
+
+
+def is_tavan_adayi(signal):
+    """
+    Sinyal tavan adayı mı kontrol et
+    Reasons listesinde 'TAVAN ADAYI' veya 'GÜÇLÜ YÜKSELIŞ' var mı?
+    """
+    if not signal or not signal.get('reasons'):
+        return False
+    
+    for r in signal['reasons']:
+        title = r.get('title', '').upper()
+        if 'TAVAN ADAYI' in title:
+            return True
+        if 'GÜÇLÜ YÜKSELIŞ' in title:
+            return True
+        if 'YÜKSELİŞ' in title and '%' in title:
+            # Yükseliş bonusu varsa
+            return True
+    
+    return False
 
 
 # ════════════════════════════════════════════════════════════
@@ -142,13 +163,13 @@ def send_message(text):
 
 
 # ════════════════════════════════════════════════════════════
-# YENİ ÖZET KART (GÜZELLEŞTİRİLMİŞ)
+# ÖZET KART (Top 5)
 # ════════════════════════════════════════════════════════════
 
 def format_summary_card(signals, max_signals=5):
     """
     Top N sinyali güzel özet kartta göster
-    Madalya + renk + skor barı ile
+    Tavan adayları ⚡ ile işaretlenir
     """
     if not signals:
         return None
@@ -156,9 +177,14 @@ def format_summary_card(signals, max_signals=5):
     top_signals = signals[:max_signals]
     count = len(top_signals)
     
+    # Tavan adayı sayısı
+    tavan_sayisi = sum(1 for s in top_signals if is_tavan_adayi(s))
+    
     # Üst süsleme
     msg = "🏆🏆🏆━━━━━━━━━━━━━━━━━🏆🏆🏆\n"
     msg += f"      <b>EN İYİ {count} SİNYAL</b>\n"
+    if tavan_sayisi > 0:
+        msg += f"      ⚡ {tavan_sayisi} TAVAN ADAYI VAR! ⚡\n"
     msg += "🏆🏆🏆━━━━━━━━━━━━━━━━━🏆🏆🏆\n\n"
     
     for i, signal in enumerate(top_signals, 1):
@@ -166,36 +192,44 @@ def format_summary_card(signals, max_signals=5):
         score = signal.get('score', 0)
         price = signal.get('current_price', 0)
         
-        # Hedef bilgisi
         targets = signal.get('targets', {})
         target_1 = targets.get('target_1', 0)
         target_1_pct = targets.get('target_1_pct', 0)
         
-        # Madalya emoji
         medal = get_medal_emoji(i)
         
-        # Renkli yıldız (skora göre)
-        if score >= 85:
-            stars = "⭐⭐⭐⭐⭐"  # 5 yıldız
-        elif score >= 75:
-            stars = "⭐⭐⭐⭐"     # 4 yıldız
-        elif score >= 65:
-            stars = "⭐⭐⭐"       # 3 yıldız
+        # Tavan adayı kontrolü
+        if is_tavan_adayi(signal):
+            tavan_emoji = " ⚡"
+            tavan_text = " 🔴"
         else:
-            stars = "⭐⭐"        # 2 yıldız
+            tavan_emoji = ""
+            tavan_text = ""
         
-        # Skor barı (görsel)
+        # Yıldız (skor bazlı)
+        if score >= 85:
+            stars = "⭐⭐⭐⭐⭐"
+        elif score >= 75:
+            stars = "⭐⭐⭐⭐"
+        elif score >= 65:
+            stars = "⭐⭐⭐"
+        else:
+            stars = "⭐⭐"
+        
+        # Skor barı
         bar_length = int(score / 10)
         bar = "█" * bar_length + "░" * (10 - bar_length)
         
         # Kart
-        msg += f"{medal} <b>{symbol}</b> {stars}\n"
+        msg += f"{medal} <b>{symbol}</b>{tavan_emoji} {stars}{tavan_text}\n"
         msg += f"   💯 <b>{score}/100</b> <code>{bar}</code>\n"
         msg += f"   💰 {price:.2f} TL → 🎯 <b>{target_1:.2f}</b> "
         msg += f"(<b>+{target_1_pct}%</b>)\n\n"
     
     # Alt süsleme
     msg += "━━━━━━━━━━━━━━━━━━━━━━━\n"
+    if tavan_sayisi > 0:
+        msg += f"⚡ <i>{tavan_sayisi} tavan adayı kırmızı çerçeve ile gelecek!</i>\n"
     msg += f"⏰ {tr_now().strftime('%H:%M - %d.%m.%Y')}\n"
     msg += "📩 <i>Detaylı kartlar geliyor...</i>"
     
@@ -203,13 +237,13 @@ def format_summary_card(signals, max_signals=5):
 
 
 # ════════════════════════════════════════════════════════════
-# SİNYAL FORMATLAMA (RENKLİ ÇERÇEVE EKLENDİ!)
+# SİNYAL FORMATLAMA (RENKLİ ÇERÇEVE + TAVAN ADAYI İŞARETİ!)
 # ════════════════════════════════════════════════════════════
 
 def format_signal_for_telegram(signal, signal_index=1):
     """
     Sinyali Telegram için HTML formatında hazırla
-    YENİ: Sıralı renkli çerçeve eklendi (signal_index parametresi)
+    YENİ: Tavan adayı tespiti + kırmızı çerçeve!
     """
     if not signal:
         print("❌ Sinyal None geldi!")
@@ -244,26 +278,59 @@ def format_signal_for_telegram(signal, signal_index=1):
     risk_level = escape_html(signal.get('risk_level', '-'))
     holding = signal.get('holding', {})
     
-    # ⭐ YENİ: Sıralı renkli çerçeve
-    color = get_signal_color(signal_index)
+    # ⭐ YENİ: TAVAN ADAYI KONTROLÜ
+    tavan_adayi = is_tavan_adayi(signal)
+    
+    if tavan_adayi:
+        # KIRMIZI ÇERÇEVE (Tavan Adayı)
+        color = "🔴"
+        special_emoji = "⚡"
+        title_extra = " - ⚡ TAVAN ADAYI!"
+    else:
+        # Normal renkli çerçeve (sırasına göre)
+        color = get_signal_color(signal_index)
+        special_emoji = ""
+        title_extra = ""
+    
     medal = get_medal_emoji(signal_index)
     
-    # ── RENKLİ ÇERÇEVE ÜST ──
-    msg = f"{color}{color}{color}{color}{color}{color}{color}{color}{color}{color}{color}{color}\n"
-    msg += f"     {medal} <b>SİNYAL #{signal_index}</b>\n"
-    msg += f"{color}{color}{color}{color}{color}{color}{color}{color}{color}{color}{color}{color}\n\n"
+    # ── RENKLİ ÇERÇEVE ÜST (Tavan adayı için ⚡ karışık) ──
+    if tavan_adayi:
+        msg = f"{color}{color}{color}{special_emoji}{special_emoji}{special_emoji}{color}{color}{color}{special_emoji}{special_emoji}{special_emoji}{color}{color}{color}\n"
+        msg += f"     {medal} <b>SİNYAL #{signal_index}{title_extra}</b>\n"
+        msg += f"{color}{color}{color}{special_emoji}{special_emoji}{special_emoji}{color}{color}{color}{special_emoji}{special_emoji}{special_emoji}{color}{color}{color}\n\n"
+    else:
+        msg = f"{color}{color}{color}{color}{color}{color}{color}{color}{color}{color}{color}{color}\n"
+        msg += f"     {medal} <b>SİNYAL #{signal_index}</b>\n"
+        msg += f"{color}{color}{color}{color}{color}{color}{color}{color}{color}{color}{color}{color}\n\n"
+    
+    # ⭐ YENİ: TAVAN ADAYI ÖZEL UYARI BÖLÜMÜ
+    if tavan_adayi:
+        msg += "⚡⚡⚡ <b>TAVAN ADAYI TESPİT EDİLDİ!</b> ⚡⚡⚡\n"
+        msg += "━━━━━━━━━━━━━━━━━━━━━━━\n"
+        msg += "🚀 Hacim destekli güçlü yükseliş!\n"
+        msg += "⚠️ <b>RİSKLİ</b> - Dikkatli ol\n"
+        msg += "💡 Küçük pozisyon ile başla\n"
+        msg += "🛑 Stop'a sıkı uy\n"
+        msg += "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
     
     # ── BAŞLIK ──
     msg += f"{emoji} <b>{label}</b>\n"
     msg += "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
     
     # ── HİSSE BİLGİSİ ──
-    msg += f"📌 <b>{symbol}</b>\n"
+    msg += f"📌 <b>{symbol}</b>"
+    if tavan_adayi:
+        msg += " ⚡"
+    msg += "\n"
     msg += f"💰 Fiyat: <b>{price:.2f} TL</b>\n"
     msg += f"⏰ {tr_now().strftime('%H:%M - %d.%m.%Y')}\n\n"
     
     # ── SKOR ──
-    msg += f"💯 <b>SKOR: {score}/100</b>\n"
+    msg += f"💯 <b>SKOR: {score}/100</b>"
+    if tavan_adayi:
+        msg += " ⚡⚡⚡"
+    msg += "\n"
     msg += f"<code>{score_bar}</code>\n"
     msg += f"{stars}\n"
     msg += f"📊 <i>{confidence}</i>\n"
@@ -277,7 +344,10 @@ def format_signal_for_telegram(signal, signal_index=1):
         msg += f"⚡ <b>Tip:</b> {escape_html(holding.get('strategy', ''))}\n"
         if holding.get('duration', '-') != '-':
             msg += f"📅 <b>Tutma:</b> {escape_html(holding['duration'])}\n"
-        msg += f"🎲 <b>Risk:</b> {risk_level}\n"
+        msg += f"🎲 <b>Risk:</b> {risk_level}"
+        if tavan_adayi:
+            msg += " ⚠️ YÜKSEK (Tavan Adayı)"
+        msg += "\n"
         if holding.get('reason'):
             msg += f"💡 <i>{escape_html(holding['reason'])}</i>\n"
         msg += "\n"
@@ -428,6 +498,17 @@ def format_signal_for_telegram(signal, signal_index=1):
             msg += f"{icon} <i>{text}</i>\n"
         msg += "\n"
     
+    # ⭐ YENİ: TAVAN ADAYI SON UYARI
+    if tavan_adayi:
+        msg += "━━━━━━━━━━━━━━━━━━━━━━━\n"
+        msg += "⚡⚡⚡ <b>TAVAN ADAYI HATIRLATMA</b> ⚡⚡⚡\n"
+        msg += "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        msg += "🔴 RİSKLİ İŞLEM!\n"
+        msg += "🔴 Pozisyonu küçük tut (%3-5)\n"
+        msg += "🔴 Stop'a SIKI uy!\n"
+        msg += "🔴 Hareket dönerse hemen çık\n"
+        msg += "🔴 Gün sonu kapatmaya hazır ol\n\n"
+    
     # ── ALT BİLGİ (RENKLİ ÇERÇEVE ALT) ──
     msg += "━━━━━━━━━━━━━━━━━━━━━━━\n"
     if holding and holding.get('strategy') and holding.get('strategy') != 'YOK':
@@ -438,8 +519,11 @@ def format_signal_for_telegram(signal, signal_index=1):
         msg += f"⏱️ <i>SWING TRADE • Tutma: 2-5 gün</i>\n"
     msg += f"🤖 <i>Borsa Sinyal Bot</i>\n\n"
     
-    # ⭐ YENİ: Renkli çerçeve alt
-    msg += f"{color}{color}{color}{color}{color}{color}{color}{color}{color}{color}{color}{color}"
+    # Renkli çerçeve alt
+    if tavan_adayi:
+        msg += f"{color}{color}{color}{special_emoji}{special_emoji}{special_emoji}{color}{color}{color}{special_emoji}{special_emoji}{special_emoji}{color}{color}{color}"
+    else:
+        msg += f"{color}{color}{color}{color}{color}{color}{color}{color}{color}{color}{color}{color}"
     
     return msg
 
@@ -449,7 +533,6 @@ def format_signal_for_telegram(signal, signal_index=1):
 # ════════════════════════════════════════════════════════════
 
 async def send_signal_async(signal, signal_index=1):
-    """Tek sinyal gönder (signal_index ile)"""
     msg = format_signal_for_telegram(signal, signal_index)
     if msg:
         return await send_message_async(msg)
@@ -467,20 +550,25 @@ def send_signal(signal):
 
 
 async def send_multiple_signals_async(signals, max_signals=5):
-    """Birden çok sinyali sırayla gönder - RENKLI ÇERÇEVELI"""
+    """Birden çok sinyali sırayla gönder - RENKLI ÇERÇEVELI + TAVAN ADAYI"""
     if not signals:
         await send_message_async("⚠️ <b>Şu an güçlü sinyal yok</b>")
         return 0
     
     # 1️⃣ Genel özet mesaj
+    tavan_sayisi = sum(1 for s in signals[:max_signals] if is_tavan_adayi(s))
+    
     summary = f"""🔍 <b>BIST TARAMASI</b>
 ━━━━━━━━━━━━━━━━━━━━━━━
 
 📊 <b>{len(signals)}</b> güçlü sinyal bulundu
 🏆 En iyi <b>{min(len(signals), max_signals)}</b> tanesi gönderiliyor
-
-⏰ {tr_now().strftime('%H:%M - %d.%m.%Y')}
 """
+    if tavan_sayisi > 0:
+        summary += f"⚡ <b>{tavan_sayisi} TAVAN ADAYI</b> tespit edildi!\n"
+    
+    summary += f"\n⏰ {tr_now().strftime('%H:%M - %d.%m.%Y')}"
+    
     await send_message_async(summary.strip())
     await asyncio.sleep(1.5)
     
@@ -495,11 +583,13 @@ async def send_multiple_signals_async(signals, max_signals=5):
             print(f"   ❌ Özet kart gönderilemedi")
         await asyncio.sleep(2)
     
-    # 3️⃣ Renkli çerçeveli detaylı kartlar
+    # 3️⃣ Renkli çerçeveli detaylı kartlar (Tavan adayları kırmızı!)
     sent = 0
     for i, signal in enumerate(signals[:max_signals], 1):
-        print(f"📤 Detaylı kart {i}/{min(len(signals), max_signals)} gönderiliyor: {signal.get('symbol')}")
-        success = await send_signal_async(signal, signal_index=i)  # ⭐ signal_index gönderiyoruz
+        is_tavan = is_tavan_adayi(signal)
+        tavan_text = " ⚡ TAVAN ADAYI" if is_tavan else ""
+        print(f"📤 Detaylı kart {i}/{min(len(signals), max_signals)} gönderiliyor: {signal.get('symbol')}{tavan_text}")
+        success = await send_signal_async(signal, signal_index=i)
         if success:
             sent += 1
             print(f"   ✅ Gönderildi")
@@ -627,14 +717,21 @@ async def send_test_message_async():
 • Kar al önerileri
 • Tutma süresi önerisi
 • Risk seviyesi göstergesi
-• Top 5 özet kart (YENİ!)
-• Renkli sinyal çerçeveleri (YENİ!)
+• Top 5 özet kart
+• Renkli sinyal çerçeveleri
+• ⚡ TAVAN ADAYI TESPİTİ (YENİ!)
 
 📋 <b>STRATEJİ:</b>
 • SWING TRADE (1-5 gün tutma)
 • Skor 65+ → AL sinyali
 • Skor 75+ → GÜÇLÜ AL
 • Skor 85+ → ÇOK GÜÇLÜ AL
+
+⚡ <b>TAVAN ADAYI:</b>
+• Günlük yükseliş + hacim
+• Kırmızı çerçeve ile gösterilir
+• Ayrı uyarılar ile gelir
+• Riskli ama agresif fırsatlar
 
 ⏰ {tr_now().strftime('%H:%M - %d.%m.%Y')}
 
