@@ -43,7 +43,7 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install flask yfinance pandas numpy python-telegram-bot apscheduler requests
-          pip install --upgrade git+https://github.com/StreamAlpha/tvdatafeed.git
+          pip install --upgrade git+https://github.com/rongardF/tvdatafeed.git
       
       - name: Veritabani baslat
         env:
