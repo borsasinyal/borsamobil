@@ -1,6 +1,7 @@
 """
-Yahoo Finance'den BIST hisse verilerini çeker
-Günlük (1d) + 15 dakikalık (15m) veri desteği
+Yahoo Finance + TradingView Hibrit Veri Çekme
+ÖNCELİK: TradingView (anlık veri)
+YEDEK: Yahoo Finance (15 dk geç)
 """
 
 import yfinance as yf
@@ -15,13 +16,23 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import BIST_SYMBOLS, TUM_BIST
 from database import save_price_data, save_price_data_15m, init_database
 
+# TradingView import (varsa)
+try:
+    from services.tradingview_fetcher import fetch_all_tv, fetch_stock_tv, TV_AVAILABLE
+    TV_READY = True
+    print("✅ TradingView modülü hazır")
+except ImportError as e:
+    print(f"⚠️ TradingView modülü yüklenemedi: {e}")
+    TV_READY = False
+    TV_AVAILABLE = False
+
 
 # ════════════════════════════════════════════════════════════
-# GÜNLÜK VERİ FONKSİYONLARI
+# YAHOO FUNCTIONS (YEDEK)
 # ════════════════════════════════════════════════════════════
 
 def fetch_stock_data(symbol, period="1y"):
-    """Tek hisse - GÜNLÜK veri"""
+    """Tek hisse - Yahoo Finance - GÜNLÜK veri"""
     try:
         ticker = yf.Ticker(symbol)
         df = ticker.history(period=period)
@@ -33,7 +44,7 @@ def fetch_stock_data(symbol, period="1y"):
 
 
 def save_daily_to_database(symbol, df):
-    """Günlük DataFrame'i veritabanına kaydet"""
+    """Yahoo Finance DataFrame'i veritabanına kaydet"""
     if df is None or df.empty:
         return 0
     
@@ -55,13 +66,13 @@ def save_daily_to_database(symbol, df):
     return count
 
 
-def fetch_all_daily(symbols_list=None, delay=0.1):
-    """Tüm hisselerin günlük verisini çek"""
+def fetch_all_daily_yahoo(symbols_list=None, delay=0.1):
+    """Tüm hisselerin Yahoo'dan günlük verisini çek (YEDEK)"""
     if symbols_list is None:
         symbols_list = BIST_SYMBOLS
     
     total = len(symbols_list)
-    print(f"\n🚀 {total} hisse için GÜNLÜK veri çekiliyor...\n")
+    print(f"\n🚀 YAHOO: {total} hisse için günlük veri çekiliyor...\n")
     
     success = 0
     failed = 0
@@ -98,7 +109,7 @@ def fetch_all_daily(symbols_list=None, delay=0.1):
     total_sec = int(elapsed_total % 60)
     
     print(f"\n{'='*60}")
-    print(f"📊 GÜNLÜK VERİ ÇEKME TAMAMLANDI")
+    print(f"📊 YAHOO VERİ ÇEKME TAMAMLANDI")
     print(f"{'='*60}")
     print(f"✅ Başarılı     : {success}")
     print(f"❌ Başarısız    : {failed}")
@@ -114,14 +125,62 @@ def fetch_all_daily(symbols_list=None, delay=0.1):
 
 
 # ════════════════════════════════════════════════════════════
-# 15 DAKİKALIK VERİ FONKSİYONLARI (YENİ)
+# ANA FONKSİYON - HİBRİT SİSTEM
+# ════════════════════════════════════════════════════════════
+
+def fetch_all_daily(symbols_list=None, delay=0.05):
+    """
+    HİBRİT SİSTEM:
+    1. Önce TradingView dene (anlık veri)
+    2. TradingView başarısız olursa Yahoo'ya düş (yedek)
+    """
+    if symbols_list is None:
+        symbols_list = BIST_SYMBOLS
+    
+    print("\n" + "="*60)
+    print("🎯 HİBRİT VERİ ÇEKME SİSTEMİ")
+    print("="*60)
+    
+    # 1. ÖNCE TRADINGVIEW DENE
+    if TV_READY:
+        print("\n📡 1. AŞAMA: TradingView (ANLIK VERİ)")
+        print("-" * 60)
+        
+        try:
+            tv_success, tv_failed = fetch_all_tv(symbols_list, delay=0.3)
+            
+            # Eğer başarı oranı %50'den fazlaysa, sadece TradingView yeterli
+            success_rate = (tv_success / len(symbols_list)) * 100 if len(symbols_list) > 0 else 0
+            
+            print(f"\n📊 TradingView Başarı Oranı: %{success_rate:.1f}")
+            
+            if success_rate >= 50:
+                print("✅ TradingView yeterli, Yahoo'ya gerek yok")
+                return tv_success, tv_failed
+            else:
+                print(f"⚠️ TradingView başarı oranı düşük, Yahoo'ya da bakıyoruz...")
+        
+        except Exception as e:
+            print(f"❌ TradingView hatası: {e}")
+            print("🔄 Yahoo'ya geçiliyor...")
+    else:
+        print("⚠️ TradingView mevcut değil, doğrudan Yahoo kullanılıyor")
+    
+    # 2. YAHOO YEDEK (Eğer TV başarısızsa veya yetersizse)
+    print("\n📡 2. AŞAMA: Yahoo Finance (15 dk geç)")
+    print("-" * 60)
+    
+    yahoo_success, yahoo_failed = fetch_all_daily_yahoo(symbols_list, delay)
+    
+    return yahoo_success, yahoo_failed
+
+
+# ════════════════════════════════════════════════════════════
+# 15 DAKİKALIK VERİ (YAHOO)
 # ════════════════════════════════════════════════════════════
 
 def fetch_stock_data_15m(symbol, period="60d"):
-    """
-    Tek hisse - 15 DAKİKALIK veri
-    Yahoo Finance limit: max 60 gün geriye
-    """
+    """15 DAKİKALIK veri - Yahoo (TradingView'da farklı)"""
     try:
         ticker = yf.Ticker(symbol)
         df = ticker.history(period=period, interval="15m")
@@ -161,13 +220,10 @@ def fetch_all_15m(symbols_list=None, delay=0.2):
         symbols_list = BIST_SYMBOLS
     
     total = len(symbols_list)
-    print(f"\n🚀 {total} hisse için 15 DAKİKALIK veri çekiliyor...")
-    print(f"⚠️  Yahoo limit: Son 60 gün")
-    print(f"⏱️  Tahmini süre: ~{total * 0.5 // 60:.0f} dakika\n")
+    print(f"\n🚀 {total} hisse için 15 DAKİKALIK veri çekiliyor...\n")
     
     success = 0
     failed = 0
-    failed_symbols = []
     start_time = time.time()
     
     for i, symbol in enumerate(symbols_list, 1):
@@ -187,10 +243,8 @@ def fetch_all_15m(symbols_list=None, delay=0.2):
                 success += 1
             else:
                 failed += 1
-                failed_symbols.append(symbol)
         else:
             failed += 1
-            failed_symbols.append(symbol)
         
         if delay > 0:
             time.sleep(delay)
@@ -215,7 +269,19 @@ def fetch_all_15m(symbols_list=None, delay=0.2):
 # ════════════════════════════════════════════════════════════
 
 def fetch_current_price(symbol):
-    """Anlık fiyat"""
+    """Anlık fiyat - Önce TV, sonra Yahoo"""
+    
+    # 1. TradingView dene
+    if TV_READY:
+        try:
+            from services.tradingview_fetcher import get_current_price_tv
+            price = get_current_price_tv(symbol)
+            if price:
+                return price
+        except:
+            pass
+    
+    # 2. Yahoo yedek
     try:
         ticker = yf.Ticker(symbol)
         info = ticker.history(period="1d")
@@ -233,71 +299,35 @@ def fetch_current_price(symbol):
 
 if __name__ == "__main__":
     print("\n" + "="*60)
-    print("📊 BIST VERİ ÇEKME SİSTEMİ - PROFESYONEL")
+    print("📊 BIST VERİ ÇEKME SİSTEMİ - HİBRİT")
     print("="*60)
     print(f"\n📋 Toplam {len(BIST_SYMBOLS)} hisse mevcut")
+    print(f"📡 TradingView: {'✅ HAZIR' if TV_READY else '❌ MEVCUT DEĞİL'}")
     
     print("\n🎯 SEÇENEKLER:")
-    print("  ─── GÜNLÜK VERİ ───")
-    print("  1 → Test (5 hisse - günlük)")
-    print("  2 → BIST 100 (~100 hisse - günlük) ~5 dk")
-    print("  3 → TÜM BIST (~530 hisse - günlük) ~15 dk")
-    print()
-    print("  ─── 15 DAKİKALIK VERİ ───")
-    print("  4 → Test (5 hisse - 15dk)")
-    print("  5 → BIST 100 (~100 hisse - 15dk) ~10 dk")
-    print("  6 → TÜM BIST (~530 hisse - 15dk) ~50 dk")
-    print()
-    print("  ─── KOMBİNE ───")
-    print("  7 → HER İKİSİ: BIST 100 (günlük + 15dk) ~15 dk")
-    print("  8 → HER İKİSİ: TÜM BIST (günlük + 15dk) ~65 dk")
+    print("  1 → Test (5 hisse - Hibrit)")
+    print("  2 → BIST 100 (Hibrit)")
+    print("  3 → TÜM BIST (Hibrit)")
+    print("  4 → Sadece Yahoo (Test)")
     
-    choice = input("\nSeçim (1-8): ").strip()
+    choice = input("\nSeçim (1-4): ").strip()
     
     init_database()
     
     if choice == "1":
-        print("\n🧪 5 hisse - günlük...")
+        print("\n🧪 5 hisse - Hibrit...")
         fetch_all_daily(symbols_list=BIST_SYMBOLS[:5])
-        
     elif choice == "2":
-        print("\n⚡ BIST 100 - günlük...")
+        print("\n⚡ BIST 100 - Hibrit...")
         fetch_all_daily(symbols_list=BIST_SYMBOLS[:100])
-        
     elif choice == "3":
-        print("\n🚀 TÜM BIST - günlük (15 dk sürer)...")
+        print("\n🚀 TÜM BIST - Hibrit...")
         fetch_all_daily(symbols_list=BIST_SYMBOLS)
-        
     elif choice == "4":
-        print("\n🧪 5 hisse - 15dk...")
-        fetch_all_15m(symbols_list=BIST_SYMBOLS[:5])
-        
-    elif choice == "5":
-        print("\n⚡ BIST 100 - 15dk (10 dk sürer)...")
-        fetch_all_15m(symbols_list=BIST_SYMBOLS[:100])
-        
-    elif choice == "6":
-        print("\n🚀 TÜM BIST - 15dk (50 dk sürer)...")
-        print("☕ Çayını al, bekle...")
-        fetch_all_15m(symbols_list=BIST_SYMBOLS)
-        
-    elif choice == "7":
-        print("\n⚡ BIST 100 - HER İKİSİ...")
-        print("\n--- 1. AŞAMA: GÜNLÜK ---")
-        fetch_all_daily(symbols_list=BIST_SYMBOLS[:100])
-        print("\n--- 2. AŞAMA: 15dk ---")
-        fetch_all_15m(symbols_list=BIST_SYMBOLS[:100])
-        
-    elif choice == "8":
-        print("\n🚀 TÜM BIST - HER İKİSİ (65 dk sürer)...")
-        print("☕ Bir kahve daha hazırla...")
-        print("\n--- 1. AŞAMA: GÜNLÜK ---")
-        fetch_all_daily(symbols_list=BIST_SYMBOLS)
-        print("\n--- 2. AŞAMA: 15dk ---")
-        fetch_all_15m(symbols_list=BIST_SYMBOLS)
+        print("\n📊 TÜM BIST - Sadece Yahoo...")
+        fetch_all_daily_yahoo(symbols_list=BIST_SYMBOLS)
     else:
         print("❌ Geçersiz seçim")
         sys.exit(0)
     
     print("\n✅ İşlem tamamlandı!")
-    print("👉 Şimdi tarama yap: python services/scanner.py")
