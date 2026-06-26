@@ -1,6 +1,9 @@
 """
 Profesyonel Sinyal Motoru
-TAM PAKET: Akıllı Hacim + WaveTrend + SMI + Trend Sağlığı + EMA50 Vurgusu
+TAM PAKET + Akıllı Tavan Tespiti
+- Tavan olmuş hisseyi ÖNERMEZ
+- Tavan adayı potansiyel hisseleri yakalar
+- Fiyat takibi yapar (EMA50, trend sağlığı, hacim trendi)
 """
 
 import sys
@@ -17,11 +20,11 @@ def tr_now():
 
 
 # ════════════════════════════════════════════════════════════
-# AKILLI HACİM (25 puan)
+# AKILLI HACİM (25 puan) - Yön kontrolü
 # ════════════════════════════════════════════════════════════
 
 def score_volume(analysis):
-    """Akıllı Hacim - Yön + Trend"""
+    """Akıllı Hacim"""
     score = 0
     reasons = []
     
@@ -101,7 +104,7 @@ def score_volume(analysis):
 # ════════════════════════════════════════════════════════════
 
 def score_volume_trend(analysis):
-    """Hacim trendi: Artıyor mu, azalıyor mu?"""
+    """Hacim trendi"""
     score = 0
     reasons = []
     
@@ -148,11 +151,11 @@ def score_volume_trend(analysis):
 
 
 # ════════════════════════════════════════════════════════════
-# TREND SAĞLIĞI (Bozulma kontrolü)
+# TREND SAĞLIĞI
 # ════════════════════════════════════════════════════════════
 
 def score_trend_health(analysis):
-    """Trend sağlığı"""
+    """Trend sağlığı kontrolü"""
     score = 0
     reasons = []
     
@@ -168,7 +171,6 @@ def score_trend_health(analysis):
     
     daily_change = ((current - prev_close) / prev_close) * 100
     
-    # Fiyat bozulması
     if current < ema_21 and current < prev_close:
         score -= 8
         reasons.append({
@@ -184,7 +186,6 @@ def score_trend_health(analysis):
             'meaning': 'Kısa vade zayıflık'
         })
     
-    # Dün High/Low
     if prev_day_high and current > prev_day_high:
         score += 3
         reasons.append({
@@ -200,7 +201,6 @@ def score_trend_health(analysis):
             'meaning': 'Düşüş devam ediyor!'
         })
     
-    # RSI bozulma
     rsi = analysis.get('rsi')
     prev_rsi = analysis.get('prev_rsi')
     
@@ -217,7 +217,7 @@ def score_trend_health(analysis):
 
 
 # ════════════════════════════════════════════════════════════
-# MOMENTUM (22 puan) - RSI + MACD + SMI
+# MOMENTUM (22 puan)
 # ════════════════════════════════════════════════════════════
 
 def score_momentum(analysis):
@@ -236,7 +236,6 @@ def score_momentum(analysis):
     smi_signal = analysis.get('smi_signal')
     prev_smi = analysis.get('prev_smi')
     
-    # RSI (8 puan)
     if rsi is not None:
         if 50 <= rsi <= 65:
             score += 8
@@ -269,7 +268,6 @@ def score_momentum(analysis):
         elif 35 <= rsi < 40:
             score += 3
     
-    # MACD (8 puan)
     if all(v is not None for v in [macd, macd_signal]):
         if prev_macd is not None and prev_macd_signal is not None:
             if prev_macd <= prev_macd_signal and macd > macd_signal:
@@ -302,7 +300,6 @@ def score_momentum(analysis):
         if prev_hist is not None and macd_hist > prev_hist and macd_hist > 0:
             score += 1
     
-    # SMI (6 puan)
     if smi is not None and smi_signal is not None:
         if smi > smi_signal:
             if prev_smi is not None and prev_smi <= smi_signal:
@@ -334,7 +331,7 @@ def score_momentum(analysis):
 
 
 # ════════════════════════════════════════════════════════════
-# TREND (25 puan) - EMA50 VURGUSU ARTIRILDI!
+# TREND (25 puan) - EMA50 vurgulu
 # ════════════════════════════════════════════════════════════
 
 def score_trend(analysis):
@@ -352,11 +349,8 @@ def score_trend(analysis):
     plus_di = analysis.get('plus_di')
     minus_di = analysis.get('minus_di')
     
-    # ═══════════════════════════════════════
-    # EMA SIRALAMA (10 puan max)
-    # ═══════════════════════════════════════
+    # EMA Sıralama (10 puan)
     if all(v is not None for v in [current, ema_9, ema_21, ema_50]):
-        # MÜKEMMEL: Tüm EMA sıralı + EMA50 üstü
         if current > ema_9 > ema_21 > ema_50:
             score += 10
             reasons.append({
@@ -364,7 +358,6 @@ def score_trend(analysis):
                 'detail': 'Fiyat > EMA9 > EMA21 > EMA50',
                 'meaning': 'Tüm zaman dilimleri yukarı'
             })
-        # ÇOK İYİ: EMA9 > EMA21 üstü VE EMA50 üstü
         elif current > ema_9 and current > ema_21 and current > ema_50:
             score += 7
             reasons.append({
@@ -372,7 +365,6 @@ def score_trend(analysis):
                 'detail': 'Tüm EMA üstünde',
                 'meaning': 'Orta vade trend YUKARI'
             })
-        # İYİ: EMA21 + EMA50 üstü
         elif current > ema_21 and current > ema_50:
             score += 6
             reasons.append({
@@ -380,7 +372,6 @@ def score_trend(analysis):
                 'detail': 'EMA21 ve EMA50 üstünde',
                 'meaning': 'Orta vade yukarı'
             })
-        # ORTA: SADECE EMA50 üstü
         elif current > ema_50:
             score += 4
             reasons.append({
@@ -388,7 +379,6 @@ def score_trend(analysis):
                 'detail': f'Fiyat > EMA50 ({ema_50:.2f})',
                 'meaning': 'Orta vade trend sağlıklı'
             })
-        # ZAYIF: EMA21 üstü ama EMA50 altı (RİSKLİ!)
         elif current > ema_21 and current < ema_50:
             score += 1
             reasons.append({
@@ -396,7 +386,6 @@ def score_trend(analysis):
                 'detail': 'EMA21 üstü ama EMA50 altı',
                 'meaning': 'Kısa vade yukarı, orta vade zayıf'
             })
-        # KÖTÜ: EMA50 altında
         elif current < ema_50:
             score -= 3
             reasons.append({
@@ -405,12 +394,9 @@ def score_trend(analysis):
                 'meaning': 'Orta vade trend AŞAĞI - DİKKAT!'
             })
     
-    # ═══════════════════════════════════════
-    # EMA50 KIRILIM/KAYIP TESPİTİ (5 puan)
-    # ═══════════════════════════════════════
+    # EMA50 Kırılım/Kayıp (5 puan)
     prev_ema_50 = analysis.get('prev_ema_50')
     if all(v is not None for v in [current, ema_50, prev_close, prev_ema_50]):
-        # EMA50 yeni kırıldı (önemli!)
         if prev_close <= prev_ema_50 and current > ema_50:
             score += 5
             reasons.append({
@@ -418,7 +404,6 @@ def score_trend(analysis):
                 'detail': 'Fiyat EMA50 üstüne çıktı',
                 'meaning': 'Orta vade UPTREND başladı'
             })
-        # EMA50 kaybedildi (kötü!)
         elif prev_close > prev_ema_50 and current < ema_50:
             score -= 5
             reasons.append({
@@ -427,9 +412,7 @@ def score_trend(analysis):
                 'meaning': 'Trend BOZULUYOR'
             })
     
-    # ═══════════════════════════════════════
-    # EMA9/EMA21 YENİ KESİŞİM (3 puan)
-    # ═══════════════════════════════════════
+    # EMA9/EMA21 Kesişim (3 puan)
     prev_ema_9 = analysis.get('prev_ema_9')
     prev_ema_21 = analysis.get('prev_ema_21')
     if all(v is not None for v in [ema_9, ema_21, prev_ema_9, prev_ema_21]):
@@ -441,9 +424,7 @@ def score_trend(analysis):
                 'meaning': 'Kısa vade trend dönüşü'
             })
     
-    # ═══════════════════════════════════════
-    # SUPERTREND (3 puan)
-    # ═══════════════════════════════════════
+    # Supertrend (3 puan)
     if supertrend_dir == 1:
         score += 3
         reasons.append({
@@ -452,9 +433,7 @@ def score_trend(analysis):
             'meaning': 'Trend yukarı'
         })
     
-    # ═══════════════════════════════════════
     # ADX (4 puan)
-    # ═══════════════════════════════════════
     if adx is not None:
         if adx > 30 and plus_di and minus_di and plus_di > minus_di:
             score += 4
@@ -580,11 +559,11 @@ def score_dual_confirmation(analysis):
 
 
 # ════════════════════════════════════════════════════════════
-# POZİSYON BONUSU (10 puan)
+# POZİSYON BONUSU (10 puan) - EMA50 dahil
 # ════════════════════════════════════════════════════════════
 
 def score_position_bonus(analysis):
-    """Pozisyon bonusu - EMA50 dahil"""
+    """Pozisyon bonusu"""
     score = 0
     reasons = []
     
@@ -601,7 +580,7 @@ def score_position_bonus(analysis):
     
     if current and ema_21 and current > ema_21:
         conditions += 1
-    if current and ema_50 and current > ema_50:  # EMA50 kontrolü
+    if current and ema_50 and current > ema_50:
         conditions += 1
     if macd and macd_signal and macd > macd_signal:
         conditions += 1
@@ -790,24 +769,18 @@ def score_liquidity(analysis):
 
 
 # ════════════════════════════════════════════════════════════
-# TOPLAM PUAN
+# TOPLAM PUAN - AKILLI TAVAN KONTROLÜ EKLENDİ!
 # ════════════════════════════════════════════════════════════
 
 def calculate_total_score(analysis):
     """
-    YENİ SKOR SİSTEMİ:
-    - Hacim: 25
-    - Momentum: 22
-    - Trend: 25 (EMA50 vurgulu)
-    - WaveTrend: 8
-    - Pivot: 15
-    - Kırılım: 5
-    - Likidite: 5
-    + Pozisyon: 10 BONUS
-    + Çiftli onay: 5 BONUS
-    + Hacim Trendi: 8 / -5
-    + Trend Sağlığı: 11 / -19
-    + Günlük yükseliş: 18 BONUS
+    TAM SKOR SİSTEMİ + AKILLI TAVAN KONTROLÜ
+    
+    TAVAN MANTIK:
+    - %9.5+ → ZATEN TAVAN, atla (bonus 0)
+    - %8-9.5 → Tavan yakın, DÜŞÜK bonus (3-8)
+    - %5-8 → GERÇEK tavan adayı, YÜKSEK bonus (10-18)
+    - %3-5 → Pozitif gün, orta bonus (5-8)
     """
     vol_s, vol_r = score_volume(analysis)
     mom_s, mom_r = score_momentum(analysis)
@@ -827,7 +800,9 @@ def calculate_total_score(analysis):
     all_reasons = (vol_r + mom_r + tre_r + wt_r + vwp_r + brk_r + 
                    liq_r + dual_r + pos_r + vol_trend_r + trend_health_r)
     
-    # Günlük yükseliş bonusu
+    # ═══════════════════════════════════════════
+    # AKILLI TAVAN/YÜKSELİŞ BONUSU
+    # ═══════════════════════════════════════════
     current_price = analysis.get('current_price')
     prev_close = analysis.get('prev_close')
     rvol = analysis.get('rvol', 1.0)
@@ -839,41 +814,67 @@ def calculate_total_score(analysis):
         bonus_text = None
         meaning = None
         
-        if daily_change >= 8:
+        # ZATEN TAVAN OLMUŞ - ATLA!
+        if daily_change >= 9.5:
+            # Tavan olmuş, fırsat yok - SESSİZCE ATLA
+            bonus = 0
+            # Sebep ekleme - sinyal vermeyebilir
+        
+        # TAVAN'A ÇOK YAKIN - RİSKLİ
+        elif daily_change >= 8:
+            if rvol >= 2:
+                bonus = 8
+                bonus_text = f'⚠️ TAVAN YAKIN +%{daily_change:.1f}'
+                meaning = 'Tavana çok yakın - RİSKLİ giriş, hızlı çık'
+            elif rvol >= 1.5:
+                bonus = 5
+                bonus_text = f'⚠️ TAVAN YAKIN +%{daily_change:.1f}'
+                meaning = 'Tavana yakın, dikkatli ol'
+            elif rvol >= 1.0:
+                bonus = 3
+                bonus_text = f'⚠️ +%{daily_change:.1f} TAVAN YAKIN'
+                meaning = 'Geç kalmış olabilir'
+        
+        # GERÇEK TAVAN ADAYI - MUKEMMEL!
+        elif daily_change >= 5:
             if rvol >= 2:
                 bonus = 18
                 bonus_text = f'🚀 TAVAN ADAYI! +%{daily_change:.1f}'
-                meaning = 'Çok güçlü momentum'
+                meaning = 'Tavan olabilir - ideal giriş'
             elif rvol >= 1.5:
                 bonus = 15
-                bonus_text = f'🚀 GÜÇLÜ YÜKSELIŞ +%{daily_change:.1f}'
-                meaning = 'Tavan adayı'
+                bonus_text = f'🚀 GÜÇLÜ TAVAN ADAYI +%{daily_change:.1f}'
+                meaning = 'Tavan adayı - güçlü hacim'
             elif rvol >= 1.0:
                 bonus = 10
                 bonus_text = f'🚀 GÜNLÜK +%{daily_change:.1f}'
                 meaning = 'Güçlü yükseliş'
-        elif daily_change >= 5:
+        
+        # GÜÇLÜ GÜN
+        elif daily_change >= 3:
             if rvol >= 1.5:
-                bonus = 12
+                bonus = 8
                 bonus_text = f'📈 GÜÇLÜ GÜN +%{daily_change:.1f}'
                 meaning = 'Sağlıklı yükseliş'
             elif rvol >= 1.0:
-                bonus = 8
+                bonus = 5
                 bonus_text = f'📈 POZİTİF GÜN +%{daily_change:.1f}'
                 meaning = 'Yukarı yönlü'
-        elif daily_change >= 3:
+        
+        # HAFİF YÜKSELİŞ
+        elif daily_change >= 1.5:
             if rvol >= 1.5:
-                bonus = 6
+                bonus = 4
                 bonus_text = f'📊 POZİTİF +%{daily_change:.1f}'
                 meaning = 'Hafif yükseliş'
             elif rvol >= 1.0:
-                bonus = 3
+                bonus = 2
         
         if bonus > 0:
             total += bonus
             if bonus_text:
                 all_reasons.append({
-                    'icon': '🚀' if daily_change >= 5 else '📈',
+                    'icon': '🚀' if daily_change >= 5 else '📈' if daily_change >= 3 else '⚠️',
                     'title': bonus_text,
                     'detail': f'Önceki: {prev_close:.2f} → Şu an: {current_price:.2f}',
                     'meaning': meaning
@@ -886,7 +887,7 @@ def calculate_total_score(analysis):
         'breakdown': {
             'volume': {'score': vol_s, 'max': 25},
             'momentum': {'score': mom_s, 'max': 22},
-            'trend': {'score': tre_s, 'max': 25},  # 20→25
+            'trend': {'score': tre_s, 'max': 25},
             'wavetrend': {'score': wt_s, 'max': 8},
             'vwap_pivot': {'score': vwp_s, 'max': 15},
             'breakout_candle': {'score': brk_s, 'max': 5},
@@ -965,6 +966,27 @@ def generate_warnings(analysis):
     
     rsi = analysis.get('rsi')
     rvol = analysis.get('rvol')
+    current_price = analysis.get('current_price')
+    prev_close = analysis.get('prev_close')
+    
+    # Tavan'a yakın uyarısı
+    if current_price and prev_close and prev_close > 0:
+        daily_change = ((current_price - prev_close) / prev_close) * 100
+        
+        if daily_change >= 9.5:
+            warnings.append({
+                'level': 'EXTREME', 'icon': '🔴🔴',
+                'title': 'ZATEN TAVAN!',
+                'detail': f'+%{daily_change:.2f}',
+                'action': 'GİRMEYIN! Tavan zaten oluştu'
+            })
+        elif daily_change >= 8:
+            warnings.append({
+                'level': 'HIGH', 'icon': '⚠️',
+                'title': 'TAVANA YAKIN',
+                'detail': f'+%{daily_change:.2f}',
+                'action': 'Riskli - küçük pozisyon, hızlı çık'
+            })
     
     if rsi:
         if rsi > 80:
@@ -1160,4 +1182,4 @@ def format_signal_message(signal):
 
 
 if __name__ == "__main__":
-    print("✅ Signal Engine - TAM PAKET: EMA50 + Trend Sağlığı + Hacim Trendi + Pozisyon")
+    print("✅ Signal Engine - AKILLI TAVAN TESPİTİ + Tam Paket")
