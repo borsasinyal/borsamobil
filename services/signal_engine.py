@@ -1,6 +1,6 @@
 """
 Profesyonel Sinyal Motoru
-GEVŞETİLMİŞ Filtreleme - Daha çok sinyal
+DENGELI Filtreleme - Hem tavan adayları hem normal hisseler
 """
 
 import sys
@@ -17,26 +17,23 @@ def tr_now():
 
 
 # ════════════════════════════════════════════════════════════
-# AKILLI HACİM (25 puan) - DAHA ESNEK
+# AKILLI HACİM (25 puan)
 # ════════════════════════════════════════════════════════════
 
 def score_volume(analysis):
-    """Akıllı Hacim - Yön + Trend"""
+    """Akıllı Hacim"""
     score = 0
     reasons = []
     
     rvol = analysis.get('rvol', 1)
     current = analysis.get('current_price')
     prev_close = analysis.get('prev_close')
-    today_volume = analysis.get('volume', 0)
-    avg_volume_5 = analysis.get('avg_volume_5', 0)
     
     if not (current and prev_close and prev_close > 0):
         return 0, []
     
     is_up = current > prev_close
     daily_change = ((current - prev_close) / prev_close) * 100
-    volume_trend_up = today_volume > avg_volume_5 if avg_volume_5 > 0 else False
     
     # YÜKSELİŞTE
     if is_up:
@@ -44,65 +41,70 @@ def score_volume(analysis):
             score = 25
             reasons.append({
                 'icon': '🚀', 'title': 'GÜÇLÜ ALIŞ BASKISI',
-                'detail': f'RVOL: {rvol:.1f}x + Yükseliş',
+                'detail': f'RVOL: {rvol:.1f}x',
                 'meaning': 'Kurumsal alım'
             })
         elif rvol >= 3:
             score = 22
             reasons.append({
-                'icon': '💥', 'title': 'YÜKSEK HACİM + YÜKSELİŞ',
+                'icon': '💥', 'title': 'YÜKSEK HACİM',
                 'detail': f'RVOL: {rvol:.1f}x',
                 'meaning': 'Güçlü alış'
             })
         elif rvol >= 2:
             score = 18
             reasons.append({
-                'icon': '📊', 'title': 'HACİM ARTIŞI + YÜKSELİŞ',
+                'icon': '📊', 'title': 'HACİM ARTIŞI',
                 'detail': f'RVOL: {rvol:.1f}x',
                 'meaning': 'İyi alış'
             })
         elif rvol >= 1.5:
-            score = 12
+            score = 14
             reasons.append({
                 'icon': '📊', 'title': 'NORMAL ÜSTÜ HACİM',
                 'detail': f'RVOL: {rvol:.1f}x',
                 'meaning': 'Yeterli alış'
             })
         elif rvol >= 1.0:
-            score = 8
+            score = 10
+            reasons.append({
+                'icon': '📊', 'title': 'HACİM NORMAL',
+                'detail': f'RVOL: {rvol:.1f}x',
+                'meaning': 'Yükselişte normal hacim'
+            })
+        elif rvol >= 0.7:
+            score = 6
     
-    # DÜŞÜŞTE - ANCAK YİNE DE PUAN VERELİM (eskiden 0 yapıyorduk)
+    # DÜŞÜŞTE
     else:
         if rvol >= 3:
-            # Düşüşte yüksek hacim = SATIŞ BASKISI (uyarı + 0 puan)
             score = 0
             reasons.append({
                 'icon': '⚠️', 'title': 'SATIŞ BASKISI',
-                'detail': f'RVOL: {rvol:.1f}x, %{daily_change:.2f}',
-                'meaning': 'Düşüşte yüksek hacim'
+                'detail': f'RVOL: {rvol:.1f}x düşüşte',
+                'meaning': 'Yüksek hacimle satılıyor'
             })
         elif rvol >= 1.5:
-            score = 3  # Hafif puan
+            score = 3
         elif rvol >= 0.8:
-            score = 5  # Normal hacim, düşüş normal pullback olabilir
+            score = 5
     
-    # HACİM DÜŞÜK uyarısı
     if rvol < 0.5:
         reasons.append({
             'icon': '⚠️', 'title': 'HACİM DÜŞÜK',
             'detail': f'RVOL: {rvol:.1f}x',
-            'meaning': 'Dikkat'
+            'meaning': 'İlgi az'
         })
     
     return min(score, 25), reasons
 
 
 # ════════════════════════════════════════════════════════════
-# MOMENTUM (20 puan) - RSI + MACD + SMI (Esnek)
+# MOMENTUM (22 puan) - Artırıldı
 # ════════════════════════════════════════════════════════════
 
 def score_momentum(analysis):
-    """Momentum"""
+    """Momentum - Daha cömert puanlama"""
     score = 0
     reasons = []
     
@@ -117,92 +119,97 @@ def score_momentum(analysis):
     smi_signal = analysis.get('smi_signal')
     prev_smi = analysis.get('prev_smi')
     
-    # RSI (7 puan)
+    # RSI (8 puan)
     if rsi is not None:
         if 50 <= rsi <= 65:
-            score += 7
+            score += 8
             reasons.append({
                 'icon': '⚡', 'title': 'RSI İDEAL',
                 'detail': f'RSI: {rsi:.1f}',
                 'meaning': 'Momentum var'
             })
         elif 45 <= rsi < 50:
-            score += 5
+            score += 6
             reasons.append({
                 'icon': '⚡', 'title': 'RSI DENGE',
                 'detail': f'RSI: {rsi:.1f}',
                 'meaning': 'Denge bölgesi'
             })
         elif 40 <= rsi < 45:
-            score += 4
+            score += 5
             reasons.append({
                 'icon': '⚡', 'title': 'RSI TOPARLANIYOR',
                 'detail': f'RSI: {rsi:.1f}',
                 'meaning': 'Dip dönüşü olabilir'
             })
         elif 65 < rsi <= 72:
-            score += 3
+            score += 4
             reasons.append({
                 'icon': '⚡', 'title': 'RSI GÜÇLÜ',
                 'detail': f'RSI: {rsi:.1f}',
                 'meaning': 'Momentum güçlü'
             })
+        elif 35 <= rsi < 40:
+            score += 3
     
     # MACD (8 puan)
-    if all(v is not None for v in [macd, macd_signal, prev_macd, prev_macd_signal]):
-        # Yeni kesişim (en güçlü)
-        if prev_macd <= prev_macd_signal and macd > macd_signal:
-            score += 8
-            reasons.append({
-                'icon': '🚀', 'title': 'MACD KESİŞİMİ',
-                'detail': 'MACD yukarı kesti',
-                'meaning': 'YENİ momentum'
-            })
-        # Zaten pozitif ve yukarı
-        elif macd > macd_signal and macd > 0:
-            score += 5
-            reasons.append({
-                'icon': '📈', 'title': 'MACD POZİTİF',
-                'detail': 'MACD yükselişte',
-                'meaning': 'Trend yukarı'
-            })
-        # MACD > Signal (daha hafif)
-        elif macd > macd_signal:
-            score += 3
-            reasons.append({
-                'icon': '📈', 'title': 'MACD YÜKSELİŞ',
-                'detail': 'MACD pozitif',
-                'meaning': 'Yukarı yönlü'
-            })
+    if all(v is not None for v in [macd, macd_signal]):
+        # Yeni kesişim (BONUS)
+        if prev_macd is not None and prev_macd_signal is not None:
+            if prev_macd <= prev_macd_signal and macd > macd_signal:
+                score += 8
+                reasons.append({
+                    'icon': '🚀', 'title': 'MACD KESİŞİMİ',
+                    'detail': 'MACD yukarı kesti',
+                    'meaning': 'YENİ momentum'
+                })
+            elif macd > macd_signal and macd > 0:
+                score += 6
+                reasons.append({
+                    'icon': '📈', 'title': 'MACD POZİTİF',
+                    'detail': 'MACD yükselişte',
+                    'meaning': 'Trend yukarı'
+                })
+            elif macd > macd_signal:
+                score += 4
+                reasons.append({
+                    'icon': '📈', 'title': 'MACD YÜKSELİŞ',
+                    'detail': 'MACD signal üstünde',
+                    'meaning': 'Pozitif yön'
+                })
+        else:
+            if macd > macd_signal:
+                score += 4
     
-    # MACD Histogram artıyor mu?
+    # MACD Histogram
     if macd_hist is not None:
         prev_hist = analysis.get('prev_macd_hist')
         if prev_hist is not None and macd_hist > prev_hist and macd_hist > 0:
             score += 1
     
-    # SMI (5 puan) - DAHA ESNEK!
+    # SMI (6 puan)
     if smi is not None and smi_signal is not None:
-        # SMI Signal'in üstünde = İYİ
         if smi > smi_signal:
-            # Yeni kesişim varsa BONUS
+            # Yeni kesişim
             if prev_smi is not None and prev_smi <= smi_signal:
-                score += 5
+                score += 6
                 reasons.append({
                     'icon': '📊', 'title': 'SMI KESİŞİMİ',
                     'detail': f'SMI: {smi:.1f}',
                     'meaning': 'Güçlü momentum başladı'
                 })
-            # Sadece pozisyon (kesişim olmasa da)
+            # Pozisyon
             elif -40 < smi < 40:
-                score += 3
+                score += 4
                 reasons.append({
-                    'icon': '📊', 'title': 'SMI POZİTİF YÖN',
-                    'detail': f'SMI: {smi:.1f} > Signal',
+                    'icon': '📊', 'title': 'SMI POZİTİF',
+                    'detail': f'SMI: {smi:.1f}',
                     'meaning': 'Momentum pozitif'
                 })
+            elif 40 <= smi < 60:
+                score += 3
         
-        # Aşırı satım bölgesinde dönüş
+        # Aşırı satımdan dönüş
         if smi < -40 and prev_smi is not None and smi > prev_smi:
             score += 4
             reasons.append({
@@ -211,15 +218,15 @@ def score_momentum(analysis):
                 'meaning': 'Aşırı satımdan dönüyor'
             })
     
-    return min(score, 20), reasons
+    return min(score, 22), reasons
 
 
 # ════════════════════════════════════════════════════════════
-# TREND (18 puan)
+# TREND (20 puan) - Artırıldı
 # ════════════════════════════════════════════════════════════
 
 def score_trend(analysis):
-    """Trend"""
+    """Trend - Daha cömert"""
     score = 0
     reasons = []
     
@@ -232,29 +239,31 @@ def score_trend(analysis):
     plus_di = analysis.get('plus_di')
     minus_di = analysis.get('minus_di')
     
-    # EMA Sıralama (7 puan)
+    # EMA Sıralama (9 puan)
     if all(v is not None for v in [current, ema_9, ema_21, ema_50]):
         if current > ema_9 > ema_21 > ema_50:
-            score += 7
+            score += 9
             reasons.append({
                 'icon': '🏆', 'title': 'MÜKEMMEL TREND',
                 'detail': 'Tüm EMA sıralı',
                 'meaning': 'Güçlü uptrend'
             })
         elif current > ema_9 > ema_21:
-            score += 5
+            score += 6
             reasons.append({
                 'icon': '📈', 'title': 'TREND POZİTİF',
                 'detail': 'EMA9 > EMA21',
                 'meaning': 'Trend yukarı'
             })
         elif current > ema_21:
-            score += 3
+            score += 4
             reasons.append({
                 'icon': '📈', 'title': 'EMA21 ÜSTÜNDE',
                 'detail': 'Pozitif taraf',
                 'meaning': 'Trend pozitif'
             })
+        elif current > ema_50:
+            score += 2
     
     # EMA Yeni Kesişim
     prev_ema_9 = analysis.get('prev_ema_9')
@@ -287,19 +296,21 @@ def score_trend(analysis):
                 'meaning': 'Trend güçlü'
             })
         elif adx > 25:
-            score += 2
+            score += 3
         elif adx > 20:
+            score += 2
+        elif adx > 15:
             score += 1
     
-    return min(score, 18), reasons
+    return min(score, 20), reasons
 
 
 # ════════════════════════════════════════════════════════════
-# WAVETREND (10 puan) - DAHA ESNEK
+# WAVETREND (8 puan) - Azaltıldı, çok kolay puan
 # ════════════════════════════════════════════════════════════
 
 def score_wavetrend(analysis):
-    """WaveTrend - Pozisyon bazlı"""
+    """WaveTrend - Pozisyon bazlı, çok esnek"""
     score = 0
     reasons = []
     
@@ -311,78 +322,62 @@ def score_wavetrend(analysis):
     if wt1 is None or wt2 is None:
         return 0, []
     
-    # 1. YENİ KESİŞİM (en güçlü)
+    # Yeni kesişim
     if all(v is not None for v in [prev_wt1, prev_wt2]):
         if prev_wt1 <= prev_wt2 and wt1 > wt2:
-            # Aşırı satım bölgesinde kesişim
             if wt1 < -53:
-                score = 10
+                score = 8
                 reasons.append({
                     'icon': '🌊', 'title': 'WT DİP DÖNÜŞÜ!',
-                    'detail': f'WT1: {wt1:.1f} (aşırı satım)',
+                    'detail': f'WT1: {wt1:.1f}',
                     'meaning': 'Mükemmel AL fırsatı'
                 })
                 return score, reasons
             else:
-                score = 7
+                score = 6
                 reasons.append({
                     'icon': '🌊', 'title': 'WT AL KESİŞİMİ',
-                    'detail': f'WT1 ({wt1:.1f}) > WT2 ({wt2:.1f})',
+                    'detail': f'WT1 > WT2',
                     'meaning': 'Yeni yükseliş'
                 })
                 return score, reasons
     
-    # 2. POZİSYON BAZLI (kesişim olmasa da)
+    # Pozisyon bazlı
     if wt1 > wt2:
-        # Aşırı satım bölgesinde
         if wt1 < -40:
-            score = 6
+            score = 5
             reasons.append({
                 'icon': '🌊', 'title': 'WT DİP BÖLGESİ',
                 'detail': f'WT1: {wt1:.1f}',
                 'meaning': 'Dipten dönüş olabilir'
             })
-        # Normal bölgede yukarı yön
         elif wt1 < 30:
-            score = 5
+            score = 4
             reasons.append({
                 'icon': '🌊', 'title': 'WT POZİTİF',
                 'detail': f'WT1 > WT2',
                 'meaning': 'Yükseliş trendi'
             })
-        # Orta üst bölge
         elif wt1 < 50:
             score = 3
-        # Aşırı alım yakın - dikkat
         elif wt1 > 60:
             reasons.append({
                 'icon': '⚠️', 'title': 'WT AŞIRI ALIM',
                 'detail': f'WT1: {wt1:.1f}',
                 'meaning': 'Düzeltme gelebilir'
             })
-    
-    # 3. Sadece aşırı satım bölgesi (yön yok ama dipte)
     elif wt1 < -53:
         score = 2
-        reasons.append({
-            'icon': '🌊', 'title': 'WT AŞIRI SATIM',
-            'detail': f'WT1: {wt1:.1f}',
-            'meaning': 'Dip oluşumu'
-        })
     
-    return min(score, 10), reasons
+    return min(score, 8), reasons
 
 
 # ════════════════════════════════════════════════════════════
-# ÇİFTLİ ONAY (5 puan BONUS) - ESNEK
+# ÇİFTLİ ONAY (5 puan BONUS)
 # ════════════════════════════════════════════════════════════
 
 def score_dual_confirmation(analysis):
-    """
-    WaveTrend + SMI çiftli onay
-    İkisi de pozitif yönde olursa BONUS
-    Kesişim ŞART DEĞİL!
-    """
+    """WT + SMI çiftli onay"""
     score = 0
     reasons = []
     
@@ -394,31 +389,24 @@ def score_dual_confirmation(analysis):
     if not all(v is not None for v in [wt1, wt2, smi, smi_signal]):
         return 0, []
     
-    # WT pozitif yön
     wt_positive = wt1 > wt2
-    
-    # SMI pozitif yön
     smi_positive = smi > smi_signal
     
-    # İKİSİ AYNI ANDA POZİTİF
     if wt_positive and smi_positive:
-        # Her ikisi de aşırı satımdan çıkıyorsa MUHTEŞEM
         if wt1 < -30 and smi < -30:
             score = 5
             reasons.append({
-                'icon': '🎯', 'title': 'ÇİFTLİ ONAY: WT + SMI (DİP DÖNÜŞ)',
-                'detail': 'WaveTrend + SMI ikisi de dip dönüyor',
+                'icon': '🎯', 'title': 'ÇİFTLİ ONAY: DİP DÖNÜŞ',
+                'detail': 'WT + SMI ikisi dip dönüyor',
                 'meaning': 'Mükemmel teknik onay!'
             })
-        # İkisi pozitif ve normal bölge
         elif wt1 < 50 and -40 < smi < 40:
             score = 4
             reasons.append({
                 'icon': '🎯', 'title': 'ÇİFTLİ ONAY: WT + SMI',
-                'detail': 'Her iki osilatör pozitif yönde',
+                'detail': 'Her iki osilatör pozitif',
                 'meaning': 'Güçlü teknik destek'
             })
-        # En az ikisi pozitif
         else:
             score = 2
     
@@ -426,7 +414,69 @@ def score_dual_confirmation(analysis):
 
 
 # ════════════════════════════════════════════════════════════
-# PİVOT POINT (12 puan)
+# POZİSYON BONUSU (10 puan) - YENİ!
+# ════════════════════════════════════════════════════════════
+
+def score_position_bonus(analysis):
+    """
+    Hisse iyi pozisyonda mı?
+    Birden fazla kritere uyuyorsa bonus puan
+    """
+    score = 0
+    reasons = []
+    
+    current = analysis.get('current_price')
+    ema_21 = analysis.get('ema_21')
+    macd = analysis.get('macd')
+    macd_signal = analysis.get('macd_signal')
+    rvol = analysis.get('rvol', 1)
+    rsi = analysis.get('rsi', 50)
+    supertrend_dir = analysis.get('supertrend_dir')
+    
+    # Pozitif kriterleri say
+    conditions = 0
+    
+    if current and ema_21 and current > ema_21:
+        conditions += 1
+    if macd and macd_signal and macd > macd_signal:
+        conditions += 1
+    if rvol >= 1.3:
+        conditions += 1
+    if 45 <= rsi <= 70:
+        conditions += 1
+    if supertrend_dir == 1:
+        conditions += 1
+    
+    # 5 kriter = Mükemmel pozisyon
+    if conditions >= 5:
+        score = 10
+        reasons.append({
+            'icon': '✨', 'title': 'MÜKEMMEL POZİSYON',
+            'detail': f'{conditions}/5 kriter pozitif',
+            'meaning': 'Çok güçlü teknik yapı'
+        })
+    elif conditions == 4:
+        score = 7
+        reasons.append({
+            'icon': '✨', 'title': 'ÇOK İYİ POZİSYON',
+            'detail': f'{conditions}/5 kriter pozitif',
+            'meaning': 'Güçlü pozisyon'
+        })
+    elif conditions == 3:
+        score = 4
+        reasons.append({
+            'icon': '📈', 'title': 'İYİ POZİSYON',
+            'detail': f'{conditions}/5 kriter pozitif',
+            'meaning': 'Sağlıklı yapı'
+        })
+    elif conditions == 2:
+        score = 2
+    
+    return score, reasons
+
+
+# ════════════════════════════════════════════════════════════
+# PİVOT POINT (15 puan) - Artırıldı
 # ════════════════════════════════════════════════════════════
 
 def score_vwap_pivot(analysis):
@@ -446,21 +496,21 @@ def score_vwap_pivot(analysis):
     
     if r2 and current > r2:
         if r3 and current < r3:
-            score = 12
+            score = 15
             reasons.append({
                 'icon': '🚀', 'title': 'R2 KIRILDI!',
                 'detail': f'R2 ({r2:.2f}) kırıldı',
                 'meaning': 'Çok güçlü momentum'
             })
         else:
-            score = 10
+            score = 13
             reasons.append({
                 'icon': '🚀', 'title': 'R2 ÜSTÜNDE',
                 'detail': f'R2 geçildi',
                 'meaning': 'Güçlü yukarı'
             })
     elif r1 and r2 and current > r1 and current <= r2:
-        score = 9
+        score = 11
         reasons.append({
             'icon': '🎯', 'title': 'R1 KIRILDI',
             'detail': f'R1 ({r1:.2f}) kırıldı',
@@ -469,74 +519,63 @@ def score_vwap_pivot(analysis):
     elif r1 and current > pivot and current <= r1:
         distance_to_r1 = ((r1 - current) / current) * 100
         if distance_to_r1 < 1:
-            score = 8
+            score = 10
             reasons.append({
                 'icon': '🎯', 'title': 'R1 YAKININDA',
                 'detail': 'R1 test ediliyor',
                 'meaning': 'Kırılım yakın'
             })
         else:
-            score = 7
+            score = 8
             reasons.append({
                 'icon': '📈', 'title': 'PİVOT ÜSTÜ',
                 'detail': 'Pivot üstünde',
                 'meaning': 'Alıcılar kontrolde'
             })
     elif pivot and abs(current - pivot) / pivot < 0.005:
-        score = 5
+        score = 6
         reasons.append({
             'icon': '🎯', 'title': 'PİVOT TESTİ',
             'detail': 'Kritik nokta',
             'meaning': 'Yön belirleniyor'
         })
     elif s1 and pivot and current > s1 and current < pivot:
-        score = 3
+        score = 4
     
-    return min(score, 12), reasons
+    return min(score, 15), reasons
 
 
 # ════════════════════════════════════════════════════════════
-# KIRILIM & MUM (10 puan)
+# KIRILIM & MUM (5 puan) - Azaltıldı (bonus zaten var)
 # ════════════════════════════════════════════════════════════
 
 def score_breakout_candle(analysis):
-    """Kırılım + Mum"""
+    """Kırılım + Mum (sade)"""
     score = 0
     reasons = []
     
     breakouts = analysis.get('breakouts', [])
     candle_patterns = analysis.get('candle_patterns', [])
-    current = analysis.get('current_price')
-    bb_upper = analysis.get('bb_upper')
     
     up_breakouts = [b for b in breakouts if b['type'] == 'UP']
     if up_breakouts:
         max_period = max(b['period'] for b in up_breakouts)
         if max_period >= 50:
-            score += 6
+            score += 3
             reasons.append({
                 'icon': '🚀', 'title': '50 GÜNLÜK ZİRVE',
                 'detail': f'{max_period} günlük kırılım',
                 'meaning': 'Çok güçlü kırılım'
             })
         elif max_period >= 20:
-            score += 4
+            score += 2
             reasons.append({
                 'icon': '🚀', 'title': '20 GÜNLÜK ZİRVE',
                 'detail': f'{max_period} günlük',
                 'meaning': 'Güçlü kırılım'
             })
         elif max_period >= 10:
-            score += 2
-    
-    if current and bb_upper:
-        if current >= bb_upper * 0.99:
-            score += 2
-            reasons.append({
-                'icon': '💥', 'title': 'BB ÜST BANT',
-                'detail': 'Volatilite kırılımı',
-                'meaning': 'Güçlü hareket'
-            })
+            score += 1
     
     bullish_patterns = [p for p in candle_patterns if p.get('bullish')]
     if bullish_patterns:
@@ -552,7 +591,7 @@ def score_breakout_candle(analysis):
         else:
             score += 1
     
-    return min(score, 10), reasons
+    return min(score, 5), reasons
 
 
 # ════════════════════════════════════════════════════════════
@@ -591,7 +630,19 @@ def score_liquidity(analysis):
 # ════════════════════════════════════════════════════════════
 
 def calculate_total_score(analysis):
-    """Toplam skor"""
+    """
+    YENİ SKOR SİSTEMİ:
+    - Hacim: 25
+    - Momentum: 22 (artırıldı)
+    - Trend: 20 (artırıldı)
+    - WaveTrend: 8 (azaltıldı)
+    - Pivot: 15 (artırıldı)
+    - Kırılım: 5 (azaltıldı, bonus zaten var)
+    - Likidite: 5
+    - BONUS Pozisyon: +10 (YENİ!)
+    - BONUS Çiftli onay: +5
+    - BONUS Günlük yükseliş: +18
+    """
     vol_s, vol_r = score_volume(analysis)
     mom_s, mom_r = score_momentum(analysis)
     tre_s, tre_r = score_trend(analysis)
@@ -600,9 +651,10 @@ def calculate_total_score(analysis):
     brk_s, brk_r = score_breakout_candle(analysis)
     liq_s, liq_r = score_liquidity(analysis)
     dual_s, dual_r = score_dual_confirmation(analysis)
+    pos_s, pos_r = score_position_bonus(analysis)  # YENİ!
     
-    total = vol_s + mom_s + tre_s + wt_s + vwp_s + brk_s + liq_s + dual_s
-    all_reasons = vol_r + mom_r + tre_r + wt_r + vwp_r + brk_r + liq_r + dual_r
+    total = vol_s + mom_s + tre_s + wt_s + vwp_s + brk_s + liq_s + dual_s + pos_s
+    all_reasons = vol_r + mom_r + tre_r + wt_r + vwp_r + brk_r + liq_r + dual_r + pos_r
     
     # Günlük yükseliş bonusu
     current_price = analysis.get('current_price')
@@ -662,11 +714,11 @@ def calculate_total_score(analysis):
         'total': total,
         'breakdown': {
             'volume': {'score': vol_s, 'max': 25},
-            'momentum': {'score': mom_s, 'max': 20},
-            'trend': {'score': tre_s, 'max': 18},
-            'wavetrend': {'score': wt_s, 'max': 10},
-            'vwap_pivot': {'score': vwp_s, 'max': 12},
-            'breakout_candle': {'score': brk_s, 'max': 10},
+            'momentum': {'score': mom_s, 'max': 22},
+            'trend': {'score': tre_s, 'max': 20},
+            'wavetrend': {'score': wt_s, 'max': 8},
+            'vwap_pivot': {'score': vwp_s, 'max': 15},
+            'breakout_candle': {'score': brk_s, 'max': 5},
             'liquidity': {'score': liq_s, 'max': 5},
         },
         'reasons': all_reasons
@@ -742,9 +794,6 @@ def generate_warnings(analysis):
     
     rsi = analysis.get('rsi')
     rvol = analysis.get('rvol')
-    macd_hist = analysis.get('macd_hist')
-    prev_macd_hist = analysis.get('prev_macd_hist')
-    momentum_status = analysis.get('momentum_status', {})
     
     if rsi:
         if rsi > 80:
@@ -940,4 +989,4 @@ def format_signal_message(signal):
 
 
 if __name__ == "__main__":
-    print("✅ Signal Engine yüklendi - Esnek filtreleme")
+    print("✅ Signal Engine - Dengeli filtreleme")
