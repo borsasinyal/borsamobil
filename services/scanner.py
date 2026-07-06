@@ -1,6 +1,6 @@
 """
 Profesyonel Tarama Motoru
-GÜNLÜK + SAATLİK tarama desteği
+GÜNLÜK + SAATLİK + 4 SAATLİK tarama desteği
 """
 
 import sys
@@ -17,7 +17,7 @@ from database import (
     get_connection,
     add_active_signal
 )
-from services.analyzer import analyze_stock, analyze_stock_hourly
+from services.analyzer import analyze_stock, analyze_stock_hourly, analyze_stock_4h
 from services.signal_engine import generate_signal, format_signal_message
 
 
@@ -68,11 +68,11 @@ def passes_safety_filters(symbol, df, analysis):
 
 
 # ════════════════════════════════════════════════════════════
-# SAATLİK GÜVENLİK FİLTRESİ (Daha esnek)
+# SAATLİK / 4H GÜVENLİK FİLTRESİ (Daha esnek)
 # ════════════════════════════════════════════════════════════
 
-def passes_hourly_filters(symbol, analysis):
-    """Saatlik tarama için daha esnek filtreler"""
+def passes_intraday_filters(symbol, analysis):
+    """Saatlik ve 4H tarama için daha esnek filtreler"""
     current_price = analysis.get('current_price')
     if current_price is None or current_price < 2:
         return False, "Fiyat düşük"
@@ -85,20 +85,21 @@ def passes_hourly_filters(symbol, analysis):
 
 
 # ════════════════════════════════════════════════════════════
-# TEK HİSSE TARAMA (GÜNLÜK)
+# TEK HİSSE TARAMA
 # ════════════════════════════════════════════════════════════
 
-def scan_single_stock(symbol, min_score=65, use_15m=False, use_hourly=False):
+def scan_single_stock(symbol, min_score=65, use_15m=False, use_hourly=False, use_4h=False):
     try:
-        if use_hourly:
-            # SAATLİK VERİ İLE ANALİZ
-            analysis = analyze_stock_hourly(symbol)
+        # ═══════════════════════════════════════
+        # 4 SAATLİK VERİ İLE ANALİZ
+        # ═══════════════════════════════════════
+        if use_4h:
+            analysis = analyze_stock_4h(symbol)
             
             if not analysis:
                 return None
             
-            # Saatlik filtreler (daha esnek)
-            passes, reason = passes_hourly_filters(symbol, analysis)
+            passes, reason = passes_intraday_filters(symbol, analysis)
             if not passes:
                 return {
                     'symbol': symbol.replace('.IS', ''),
@@ -106,7 +107,36 @@ def scan_single_stock(symbol, min_score=65, use_15m=False, use_hourly=False):
                     'filter_reason': reason
                 }
             
-            # Sinyal üret
+            signal = generate_signal(symbol, analysis)
+            
+            if not signal:
+                return None
+            
+            if signal['score'] < min_score:
+                return None
+            
+            signal['timeframe'] = '4h'
+            signal['is_4h'] = True
+            signal['is_hourly'] = False
+            return signal
+        
+        # ═══════════════════════════════════════
+        # SAATLİK VERİ İLE ANALİZ
+        # ═══════════════════════════════════════
+        elif use_hourly:
+            analysis = analyze_stock_hourly(symbol)
+            
+            if not analysis:
+                return None
+            
+            passes, reason = passes_intraday_filters(symbol, analysis)
+            if not passes:
+                return {
+                    'symbol': symbol.replace('.IS', ''),
+                    'filtered': True,
+                    'filter_reason': reason
+                }
+            
             signal = generate_signal(symbol, analysis)
             
             if not signal:
@@ -116,9 +146,13 @@ def scan_single_stock(symbol, min_score=65, use_15m=False, use_hourly=False):
                 return None
             
             signal['timeframe'] = '1h'
-            signal['is_hourly'] = True  # SAATLİK İŞARETİ
+            signal['is_hourly'] = True
+            signal['is_4h'] = False
             return signal
         
+        # ═══════════════════════════════════════
+        # GÜNLÜK VERİ İLE ANALİZ
+        # ═══════════════════════════════════════
         elif use_15m:
             data = get_stock_history_15m(symbol, limit=500)
             if not data or len(data) < 100:
@@ -153,6 +187,7 @@ def scan_single_stock(symbol, min_score=65, use_15m=False, use_hourly=False):
         
         signal['timeframe'] = '15m' if use_15m else '1d'
         signal['is_hourly'] = False
+        signal['is_4h'] = False
         return signal
 
     except Exception as e:
@@ -164,11 +199,13 @@ def scan_single_stock(symbol, min_score=65, use_15m=False, use_hourly=False):
 # TÜM BIST TARAMA
 # ════════════════════════════════════════════════════════════
 
-def scan_all_stocks(min_score=65, save_to_db=True, verbose=False, use_15m=False, use_hourly=False, symbols_list=None, add_to_tracker=True):
+def scan_all_stocks(min_score=65, save_to_db=True, verbose=False, use_15m=False, use_hourly=False, use_4h=False, symbols_list=None, add_to_tracker=True):
     if symbols_list is None:
         symbols_list = BIST_SYMBOLS
     
-    if use_hourly:
+    if use_4h:
+        timeframe = "4 SAATLİK"
+    elif use_hourly:
         timeframe = "SAATLİK"
     elif use_15m:
         timeframe = "15 DAKİKALIK"
@@ -191,7 +228,7 @@ def scan_all_stocks(min_score=65, save_to_db=True, verbose=False, use_15m=False,
         if i % 25 == 0 or i == len(symbols_list):
             print(f"   ⏳ {i}/{len(symbols_list)} ({i*100//len(symbols_list)}%) | Sinyal: {len(signals)}")
         
-        result = scan_single_stock(symbol, min_score, use_15m, use_hourly)
+        result = scan_single_stock(symbol, min_score, use_15m, use_hourly, use_4h)
         
         if result is None:
             no_data.append(symbol)
@@ -203,7 +240,8 @@ def scan_all_stocks(min_score=65, save_to_db=True, verbose=False, use_15m=False,
         
         signals.append(result)
         
-        if save_to_db and not use_hourly:
+        # Sadece günlük sinyalleri DB'ye kaydet
+        if save_to_db and not use_hourly and not use_4h:
             save_signal(
                 symbol=result['symbol'],
                 signal_type=result['signal_type'],
@@ -238,7 +276,7 @@ def scan_all_stocks(min_score=65, save_to_db=True, verbose=False, use_15m=False,
     print(f"🚫 Filtrelendi  : {len(filtered_out)}")
     print(f"⚪ Veri Yok    : {len(no_data)}")
     print(f"📋 Toplam       : {len(symbols_list)}")
-    if add_to_tracker and not use_hourly:
+    if add_to_tracker and not use_hourly and not use_4h:
         print(f"🎯 Takibe alındı: {tracker_added}")
     print(f"{'='*60}\n")
     
@@ -246,17 +284,13 @@ def scan_all_stocks(min_score=65, save_to_db=True, verbose=False, use_15m=False,
 
 
 # ════════════════════════════════════════════════════════════
-# SAATLİK TARAMA FONKSİYONU (YENİ!)
+# SAATLİK TARAMA
 # ════════════════════════════════════════════════════════════
 
 def scan_hourly_stocks(min_score=60, symbols_list=None):
-    """
-    SAATLİK VERİDEN TARAMA
-    TradingView'dan saatlik mum çeker
-    Gün içi trade edilebilir hisseleri bulur
-    """
+    """SAATLİK VERİDEN TARAMA"""
     if symbols_list is None:
-        symbols_list = BIST_SYMBOLS[:200]  # TOP 200 hisse (limit için)
+        symbols_list = BIST_SYMBOLS[:200]
     
     print(f"\n{'='*60}")
     print(f"⚡ SAATLİK TARAMA - GÜN İÇİ TRADE")
@@ -272,43 +306,49 @@ def scan_hourly_stocks(min_score=60, symbols_list=None):
         add_to_tracker=False
     )
     
-    # Saatlik sinyalleri işaretle
     for signal in hourly_signals:
         signal['is_hourly'] = True
+        signal['is_4h'] = False
         signal['timeframe'] = '1h'
     
     print(f"\n⚡ {len(hourly_signals)} SAATLİK SİNYAL BULUNDU")
-    
     return hourly_signals
 
 
 # ════════════════════════════════════════════════════════════
-# STRATEJİ BAZLI TARAMA
+# 4 SAATLİK TARAMA
 # ════════════════════════════════════════════════════════════
 
-def scan_momentum_strategy(min_score=70):
-    print("\n🚀 MOMENTUM STRATEJİSİ")
-    all_signals = scan_all_stocks(min_score=min_score, save_to_db=False, add_to_tracker=False)
-    momentum_signals = []
-    for s in all_signals:
-        ind = s.get('indicators', {})
-        rsi = ind.get('rsi')
-        rvol = ind.get('rvol')
-        macd = ind.get('macd')
-        if (rsi and 50 <= rsi <= 70 and rvol and rvol > 1.5 and macd and macd > 0):
-            momentum_signals.append(s)
-    return momentum_signals
-
-def scan_breakout_strategy(min_score=70):
-    print("\n💥 KIRILIM STRATEJİSİ")
-    all_signals = scan_all_stocks(min_score=min_score, save_to_db=False, add_to_tracker=False)
-    breakout_signals = []
-    for s in all_signals:
-        breakouts = s.get('breakouts', [])
-        up_breakouts = [b for b in breakouts if b.get('type') == 'UP']
-        if up_breakouts:
-            breakout_signals.append(s)
-    return breakout_signals
+def scan_4h_stocks(min_score=65, symbols_list=None):
+    """
+    4 SAATLİK VERİDEN TARAMA
+    14:15'te çalışır - İlk 4H mum kapandıktan sonra
+    Tüm BIST hisselerini tarar
+    """
+    if symbols_list is None:
+        symbols_list = BIST_SYMBOLS
+    
+    print(f"\n{'='*60}")
+    print(f"🕐 4 SAATLİK TARAMA")
+    print(f"📊 {len(symbols_list)} hisse taranacak")
+    print(f"⚙️  Min skor: {min_score}")
+    print(f"{'='*60}\n")
+    
+    signals_4h = scan_all_stocks(
+        min_score=min_score,
+        save_to_db=False,
+        use_4h=True,
+        symbols_list=symbols_list,
+        add_to_tracker=False
+    )
+    
+    for signal in signals_4h:
+        signal['is_4h'] = True
+        signal['is_hourly'] = False
+        signal['timeframe'] = '4h'
+    
+    print(f"\n🕐 {len(signals_4h)} ADET 4H SİNYAL BULUNDU")
+    return signals_4h
 
 
 # ════════════════════════════════════════════════════════════
@@ -367,14 +407,17 @@ def print_top_signals(signals, top_n=10):
     
     for i, s in enumerate(top, 1):
         tf = s.get('timeframe', '1d')
-        hourly = " ⚡GÜNİÇİ" if s.get('is_hourly') else ""
-        print(f"{i}. {s['emoji']} {s['symbol']:<10} {s['current_price']:.2f} TL  {s['score']}/100  ({tf}){hourly}")
+        tag = ""
+        if s.get('is_4h'): tag = " 🕐4H"
+        elif s.get('is_hourly'): tag = " ⚡GÜNİÇİ"
+        print(f"{i}. {s['emoji']} {s['symbol']:<10} {s['current_price']:.2f} TL  {s['score']}/100  ({tf}){tag}")
 
 
 if __name__ == "__main__":
     print("\n🚀 PROFESYONEL TARAMA MOTORU")
     print("1 → Günlük tarama")
     print("2 → Saatlik tarama")
+    print("3 → 4 Saatlik tarama")
     
     choice = input("\nSeçim: ").strip()
     
@@ -383,4 +426,7 @@ if __name__ == "__main__":
         print_top_signals(signals)
     elif choice == "2":
         signals = scan_hourly_stocks(min_score=60, symbols_list=BIST_SYMBOLS[:5])
+        print_top_signals(signals)
+    elif choice == "3":
+        signals = scan_4h_stocks(min_score=65, symbols_list=BIST_SYMBOLS[:5])
         print_top_signals(signals)
