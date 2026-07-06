@@ -14,7 +14,7 @@ on:
           - market_open_scan
           - full_scan
           - quick_scan
-          - strategy_scan
+          - 4h_scan
           - end_of_day_report
           - signal_tracker
           - full_scan_with_tracking
@@ -61,46 +61,50 @@ jobs:
         run: |
           python << 'EOF'
           import sys
-          from services.data_fetcher import fetch_all_daily
           from config import BIST_SYMBOLS
-          
-          # 1. ÖNCE VERİ ÇEK
-          print("=" * 60)
-          print("📥 1. AŞAMA: VERİ ÇEKİLİYOR")
-          print("=" * 60)
-          fetch_all_daily(symbols_list=BIST_SYMBOLS, delay=0.05)
-          
-          # 2. SONRA GÖREVİ ÇALIŞTIR
-          print("=" * 60)
-          print("🎯 2. AŞAMA: GÖREV ÇALIŞTIRILIYOR")
-          print("=" * 60)
           
           job_type = "${{ github.event.inputs.job_type }}"
           
-          if job_type == "morning_preparation":
-              from services.scheduler import job_morning_preparation
-              job_morning_preparation()
-          elif job_type == "premarket_report":
-              from services.scheduler import job_premarket_report
-              job_premarket_report()
-          elif job_type == "market_open_scan":
-              from services.scheduler import job_market_open_scan
-              job_market_open_scan()
-          elif job_type == "full_scan":
-              from services.scheduler import job_full_scan
-              job_full_scan()
-          elif job_type == "quick_scan":
-              from services.scheduler import job_quick_scan
-              job_quick_scan()
-          elif job_type == "strategy_scan":
-              from services.scheduler import job_strategy_scan
-              job_strategy_scan()
-          elif job_type == "end_of_day_report":
-              from services.scheduler import job_end_of_day_report
-              job_end_of_day_report()
-          elif job_type == "full_scan_with_tracking":
-              from services.scheduler import job_full_scan_with_tracking
-              job_full_scan_with_tracking()
+          # 4H TARAMASI - Veri çekme GEREKMEZ (TV'den direkt çeker)
+          if job_type == "4h_scan":
+              print("=" * 60)
+              print("🕐 4 SAATLİK TARAMA (TV'den direkt)")
+              print("=" * 60)
+              from services.scheduler import job_4h_scan
+              job_4h_scan()
+          else:
+              # DİĞER GÖREVLER - Önce veri çek
+              print("=" * 60)
+              print("📥 1. AŞAMA: VERİ ÇEKİLİYOR")
+              print("=" * 60)
+              from services.data_fetcher import fetch_all_daily
+              fetch_all_daily(symbols_list=BIST_SYMBOLS, delay=0.05)
+              
+              print("=" * 60)
+              print("🎯 2. AŞAMA: GÖREV ÇALIŞTIRILIYOR")
+              print("=" * 60)
+              
+              if job_type == "morning_preparation":
+                  from services.scheduler import job_morning_preparation
+                  job_morning_preparation()
+              elif job_type == "premarket_report":
+                  from services.scheduler import job_premarket_report
+                  job_premarket_report()
+              elif job_type == "market_open_scan":
+                  from services.scheduler import job_market_open_scan
+                  job_market_open_scan()
+              elif job_type == "full_scan":
+                  from services.scheduler import job_full_scan
+                  job_full_scan()
+              elif job_type == "quick_scan":
+                  from services.scheduler import job_quick_scan
+                  job_quick_scan()
+              elif job_type == "end_of_day_report":
+                  from services.scheduler import job_end_of_day_report
+                  job_end_of_day_report()
+              elif job_type == "full_scan_with_tracking":
+                  from services.scheduler import job_full_scan_with_tracking
+                  job_full_scan_with_tracking()
           
           print("=" * 60)
           print("✅ TÜM AŞAMALAR TAMAMLANDI")
