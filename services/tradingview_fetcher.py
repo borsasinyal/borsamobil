@@ -1,5 +1,5 @@
 """
-TradingView Veri Çekme - Günlük + Saatlik
+TradingView Veri Çekme - Günlük + Saatlik + 4 Saatlik
 """
 
 import os
@@ -44,7 +44,7 @@ def get_tv_instance():
 def fetch_stock_tv(symbol, n_bars=300, interval='daily'):
     """
     TradingView'dan veri çek
-    interval: 'daily' veya 'hourly'
+    interval: 'daily', 'hourly', '4h'
     """
     if not TV_AVAILABLE:
         return None
@@ -54,7 +54,9 @@ def fetch_stock_tv(symbol, n_bars=300, interval='daily'):
     try:
         symbol_clean = symbol.replace('.IS', '')
         
-        if interval == 'hourly':
+        if interval == '4h':
+            tv_interval = Interval.in_4_hour
+        elif interval == 'hourly':
             tv_interval = Interval.in_1_hour
         else:
             tv_interval = Interval.in_daily
@@ -71,8 +73,13 @@ def fetch_stock_tv(symbol, n_bars=300, interval='daily'):
         
         result = []
         for idx, row in data.iterrows():
+            if interval in ('hourly', '4h'):
+                date_str = idx.strftime('%Y-%m-%d %H:%M:%S')
+            else:
+                date_str = idx.strftime('%Y-%m-%d')
+            
             result.append({
-                'date': idx.strftime('%Y-%m-%d %H:%M:%S') if interval == 'hourly' else idx.strftime('%Y-%m-%d'),
+                'date': date_str,
                 'open': float(row['open']),
                 'high': float(row['high']),
                 'low': float(row['low']),
@@ -92,8 +99,15 @@ def fetch_all_tv(symbols_list, delay=0.3, interval='daily'):
     if not tv:
         return 0, len(symbols_list)
     
-    n_bars = 300 if interval == 'daily' else 100
-    interval_text = "GÜNLÜK" if interval == 'daily' else "SAATLİK"
+    if interval == '4h':
+        n_bars = 150
+        interval_text = "4 SAATLİK"
+    elif interval == 'hourly':
+        n_bars = 100
+        interval_text = "SAATLİK"
+    else:
+        n_bars = 300
+        interval_text = "GÜNLÜK"
     
     total = len(symbols_list)
     print(f"\n🚀 TradingView'dan {total} hisse için {interval_text} veri çekiliyor...\n")
