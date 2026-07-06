@@ -1,6 +1,6 @@
 """
-Profesyonel Sinyal Motoru
-DENGELI Skor + Sıkı Tavan Adayı Tespiti
+Profesyonel Sinyal Motoru - SON HAL
+DENGELİ Skor + Dip Dönüşü + Güçlü Trend + Sıkı Tavan
 """
 
 import sys
@@ -13,24 +13,20 @@ def tr_now(): return datetime.now(TR_TIMEZONE)
 
 
 def score_volume(analysis):
-    score = 0
-    reasons = []
+    score = 0; reasons = []
     rvol = analysis.get('rvol', 1)
-    current = analysis.get('current_price')
-    prev_close = analysis.get('prev_close')
+    current = analysis.get('current_price'); prev_close = analysis.get('prev_close')
     if not (current and prev_close and prev_close > 0): return 0, []
     is_up = current > prev_close
     if is_up:
-        if rvol >= 5: score, r = 25, {'icon':'🚀','title':'GÜÇLÜ ALIŞ','detail':f'RVOL:{rvol:.1f}x','meaning':'Kurumsal alım'}
-        elif rvol >= 3: score, r = 22, {'icon':'💥','title':'YÜKSEK HACİM','detail':f'RVOL:{rvol:.1f}x','meaning':'Güçlü alış'}
-        elif rvol >= 2: score, r = 18, {'icon':'📊','title':'HACİM ARTIŞI','detail':f'RVOL:{rvol:.1f}x','meaning':'İyi alış'}
-        elif rvol >= 1.5: score, r = 14, {'icon':'📊','title':'NORMAL ÜSTÜ','detail':f'RVOL:{rvol:.1f}x','meaning':'Yeterli'}
-        elif rvol >= 1.0: score, r = 10, {'icon':'📊','title':'HACİM NORMAL','detail':f'RVOL:{rvol:.1f}x','meaning':'Normal'}
-        elif rvol >= 0.7: score, r = 6, None
-        else: score, r = 0, None
-        if r: reasons.append(r)
+        if rvol >= 5: score = 25; reasons.append({'icon':'🚀','title':'GÜÇLÜ ALIŞ','detail':f'RVOL:{rvol:.1f}x','meaning':'Kurumsal alım'})
+        elif rvol >= 3: score = 22; reasons.append({'icon':'💥','title':'YÜKSEK HACİM','detail':f'RVOL:{rvol:.1f}x','meaning':'Güçlü alış'})
+        elif rvol >= 2: score = 18; reasons.append({'icon':'📊','title':'HACİM ARTIŞI','detail':f'RVOL:{rvol:.1f}x','meaning':'İyi alış'})
+        elif rvol >= 1.5: score = 14; reasons.append({'icon':'📊','title':'NORMAL ÜSTÜ','detail':f'RVOL:{rvol:.1f}x','meaning':'Yeterli'})
+        elif rvol >= 1.0: score = 10; reasons.append({'icon':'📊','title':'HACİM NORMAL','detail':f'RVOL:{rvol:.1f}x','meaning':'Normal'})
+        elif rvol >= 0.7: score = 6
     else:
-        if rvol >= 3: score = 0; reasons.append({'icon':'⚠️','title':'SATIŞ BASKISI','detail':f'RVOL:{rvol:.1f}x düşüşte','meaning':'Satılıyor'})
+        if rvol >= 3: reasons.append({'icon':'⚠️','title':'SATIŞ BASKISI','detail':f'RVOL:{rvol:.1f}x düşüşte','meaning':'Satılıyor'})
         elif rvol >= 1.5: score = 3
         elif rvol >= 0.8: score = 5
     if rvol < 0.5: reasons.append({'icon':'⚠️','title':'HACİM DÜŞÜK','detail':f'RVOL:{rvol:.1f}x','meaning':'İlgi az'})
@@ -42,11 +38,11 @@ def score_volume_trend(analysis):
     tv = analysis.get('volume', 0); av = analysis.get('avg_volume_5', 0)
     if not (tv > 0 and av > 0): return 0, []
     vr = tv / av
-    if vr >= 1.5: score = 5; reasons.append({'icon':'📈','title':'HACİM TRENDİ YUKARI','detail':f'5G ort. %{(vr-1)*100:.0f} üstü','meaning':'Artan ilgi'})
-    elif vr >= 1.2: score = 3
-    elif vr >= 0.8: score = 1
+    if vr >= 1.5: score = 3; reasons.append({'icon':'📈','title':'HACİM TRENDİ YUKARI','detail':f'%{(vr-1)*100:.0f} üstü','meaning':'Artan ilgi'})
+    elif vr >= 1.2: score = 2
+    elif vr >= 0.8: score = 0
     elif vr >= 0.5: score = -2; reasons.append({'icon':'⚠️','title':'HACİM AZALIYOR','detail':'Ortalama altı','meaning':'İlgi azalıyor'})
-    else: score = -4; reasons.append({'icon':'🔴','title':'HACİM ÇOK DÜŞÜK','detail':f'%{(1-vr)*100:.0f} altında','meaning':'İlgi yok'})
+    else: score = -3
     return score, reasons
 
 
@@ -56,11 +52,10 @@ def score_trend_health(analysis):
     pdh = analysis.get('prev_day_high'); pdl = analysis.get('prev_day_low')
     e9 = analysis.get('ema_9'); e21 = analysis.get('ema_21')
     if not (current and prev_close and e9 and e21): return 0, []
-    dc = ((current - prev_close) / prev_close) * 100
-    if current < e21 and current < prev_close: score -= 6; reasons.append({'icon':'📉','title':'FİYAT BOZULMASI','detail':'Düşüş+EMA21 altı','meaning':'Trend zayıf'})
+    if current < e21 and current < prev_close: score -= 5; reasons.append({'icon':'📉','title':'FİYAT BOZULMASI','detail':'Düşüş+EMA21 altı','meaning':'Zayıf'})
     elif current < prev_close * 0.98: score -= 3
-    if pdh and current > pdh: score += 2; reasons.append({'icon':'🚀','title':'DÜN ZİRVESİ KIRILDI','detail':f'{pdh:.2f}→{current:.2f}','meaning':'Pozitif'})
-    elif pdl and current < pdl: score -= 4; reasons.append({'icon':'🔴','title':'DÜN DİBİ KIRILDI','detail':f'{pdl:.2f}→{current:.2f}','meaning':'Düşüş'})
+    if pdh and current > pdh: score += 2
+    elif pdl and current < pdl: score -= 3; reasons.append({'icon':'🔴','title':'DÜN DİBİ KIRILDI','detail':f'{pdl:.2f}→{current:.2f}','meaning':'Düşüş'})
     rsi = analysis.get('rsi'); prsi = analysis.get('prev_rsi')
     if rsi and prsi and rsi < prsi - 5 and rsi > 50: score -= 2
     return score, reasons
@@ -74,27 +69,42 @@ def score_intraday_range(analysis):
     ir = ((th - tl) / tl) * 100
     dth = ((th - current) / th) * 100 if th > 0 else 100
     at_high = dth < 2
-    if ir >= 8 and at_high and rvol >= 2: score = 10; reasons.append({'icon':'⚡','title':f'GÜN İÇİ PATLAMA! +%{ir:.1f}','detail':f'Dip:{tl:.2f}→Zirve:{th:.2f}','meaning':'Tavan adayı - gün içi hareket!'})
-    elif ir >= 8 and at_high: score = 7; reasons.append({'icon':'⚡','title':f'GÜN İÇİ +%{ir:.1f}','detail':f'{tl:.2f}→{th:.2f}','meaning':'Güçlü gün içi'})
-    elif ir >= 5 and at_high and rvol >= 1.5: score = 5; reasons.append({'icon':'📈','title':f'GÜN İÇİ GÜÇLÜ +%{ir:.1f}','detail':f'{tl:.2f}→{current:.2f}','meaning':'İyi hareket'})
-    elif ir >= 5 and at_high: score = 3
-    elif ir >= 3 and at_high and rvol >= 1.5: score = 2
+    if ir >= 8 and at_high and rvol >= 2: score = 8; reasons.append({'icon':'⚡','title':f'GÜN İÇİ PATLAMA! +%{ir:.1f}','detail':f'{tl:.2f}→{th:.2f}','meaning':'Tavan adayı!'})
+    elif ir >= 8 and at_high: score = 5
+    elif ir >= 5 and at_high and rvol >= 1.5: score = 4
+    elif ir >= 5 and at_high: score = 2
+    elif ir >= 3 and at_high and rvol >= 1.5: score = 1
     return score, reasons
 
 
 def score_momentum(analysis):
     score = 0; reasons = []
-    rsi = analysis.get('rsi'); macd = analysis.get('macd'); ms = analysis.get('macd_signal')
+    rsi = analysis.get('rsi'); prev_rsi = analysis.get('prev_rsi')
+    macd = analysis.get('macd'); ms = analysis.get('macd_signal')
     pm = analysis.get('prev_macd'); pms = analysis.get('prev_macd_signal'); mh = analysis.get('macd_hist')
     smi = analysis.get('smi'); ss = analysis.get('smi_signal'); psmi = analysis.get('prev_smi')
     
+    # RSI (8 puan) - DİP DÖNÜŞÜ + GÜÇLÜ TREND DAHİL
     if rsi is not None:
-        if 50 <= rsi <= 65: score += 8; reasons.append({'icon':'⚡','title':'RSI İDEAL','detail':f'RSI:{rsi:.1f}','meaning':'Momentum var'})
-        elif 45 <= rsi < 50: score += 6; reasons.append({'icon':'⚡','title':'RSI DENGE','detail':f'RSI:{rsi:.1f}','meaning':'Denge'})
+        if rsi < 30 and prev_rsi and rsi > prev_rsi:
+            score += 8; reasons.append({'icon':'🎯','title':'RSI DİP DÖNÜŞÜ!','detail':f'RSI:{rsi:.1f} (dönüyor!)','meaning':'Güçlü dip AL fırsatı!'})
+        elif 30 <= rsi < 40 and prev_rsi and rsi > prev_rsi:
+            score += 7; reasons.append({'icon':'🎯','title':'RSI DİPTEN DÖNÜYOR','detail':f'RSI:{rsi:.1f}','meaning':'Dip dönüşü - iyi giriş'})
+        elif 50 <= rsi <= 65:
+            score += 8; reasons.append({'icon':'⚡','title':'RSI İDEAL','detail':f'RSI:{rsi:.1f}','meaning':'Momentum var'})
+        elif 45 <= rsi < 50:
+            score += 6; reasons.append({'icon':'⚡','title':'RSI DENGE','detail':f'RSI:{rsi:.1f}','meaning':'Denge'})
         elif 40 <= rsi < 45: score += 5
-        elif 65 < rsi <= 72: score += 4; reasons.append({'icon':'⚡','title':'RSI GÜÇLÜ','detail':f'RSI:{rsi:.1f}','meaning':'Güçlü'})
+        elif 65 < rsi <= 75:
+            score += 5; reasons.append({'icon':'⚡','title':'RSI GÜÇLÜ','detail':f'RSI:{rsi:.1f}','meaning':'Momentum güçlü'})
+        elif 75 < rsi <= 85:
+            score += 3; reasons.append({'icon':'⚡','title':'RSI ÇOK GÜÇLÜ','detail':f'RSI:{rsi:.1f}','meaning':'Güçlü trend devam'})
+        elif 85 < rsi <= 90:
+            score += 1; reasons.append({'icon':'⚠️','title':'RSI AŞIRI GÜÇLÜ','detail':f'RSI:{rsi:.1f}','meaning':'Dikkat ama devam edebilir'})
+        elif rsi > 90: score += 0
         elif 35 <= rsi < 40: score += 3
     
+    # MACD (8 puan)
     if all(v is not None for v in [macd, ms]):
         if pm is not None and pms is not None:
             if pm <= pms and macd > ms: score += 8; reasons.append({'icon':'🚀','title':'MACD KESİŞİMİ','detail':'Yukarı kesti','meaning':'YENİ momentum'})
@@ -107,6 +117,7 @@ def score_momentum(analysis):
         ph = analysis.get('prev_macd_hist')
         if ph is not None and mh > ph and mh > 0: score += 1
     
+    # SMI (6 puan)
     if smi is not None and ss is not None:
         if smi > ss:
             if psmi is not None and psmi <= ss: score += 6; reasons.append({'icon':'📊','title':'SMI KESİŞİMİ','detail':f'SMI:{smi:.1f}','meaning':'Güçlü momentum'})
@@ -123,19 +134,31 @@ def score_trend(analysis):
     e50 = analysis.get('ema_50'); pc = analysis.get('prev_close'); sd = analysis.get('supertrend_dir')
     adx = analysis.get('adx'); pdi = analysis.get('plus_di'); mdi = analysis.get('minus_di')
     
+    # DİP DÖNÜŞÜ TESPİTİ
+    rsi = analysis.get('rsi'); prev_rsi = analysis.get('prev_rsi'); rvol = analysis.get('rvol', 1)
+    is_dip = (rsi and prev_rsi and rsi < 40 and rsi > prev_rsi and rvol >= 1.5)
+    
+    # EMA SIRALAMA
     if all(v is not None for v in [c, e9, e21, e50]):
         if c > e9 > e21 > e50: score += 10; reasons.append({'icon':'🏆','title':'MÜKEMMEL TREND','detail':'Fiyat>EMA9>EMA21>EMA50','meaning':'Tüm yukarı'})
-        elif c > e9 and c > e21 and c > e50: score += 7; reasons.append({'icon':'📈','title':'GÜÇLÜ TREND','detail':'Tüm EMA üstü','meaning':'Orta vade YUKARI'})
-        elif c > e21 and c > e50: score += 6; reasons.append({'icon':'📈','title':'TREND POZİTİF','detail':'EMA21+EMA50 üstü','meaning':'Orta vade yukarı'})
-        elif c > e50: score += 4; reasons.append({'icon':'📈','title':'EMA50 ÜSTÜNDE','detail':f'>{e50:.2f}','meaning':'Orta vade sağlıklı'})
-        elif c > e21 and c < e50: score += 1; reasons.append({'icon':'⚠️','title':'KARIŞIK','detail':'EMA21 üstü EMA50 altı','meaning':'Zayıf'})
-        elif c < e50: score -= 3; reasons.append({'icon':'🔴','title':'EMA50 ALTINDA','detail':f'<{e50:.2f}','meaning':'Orta vade AŞAĞI'})
+        elif c > e9 and c > e21 and c > e50: score += 7; reasons.append({'icon':'📈','title':'GÜÇLÜ TREND','detail':'Tüm EMA üstü','meaning':'Yukarı'})
+        elif c > e21 and c > e50: score += 6; reasons.append({'icon':'📈','title':'TREND POZİTİF','detail':'EMA21+50 üstü','meaning':'Orta vade yukarı'})
+        elif c > e50: score += 4; reasons.append({'icon':'📈','title':'EMA50 ÜSTÜNDE','detail':f'>{e50:.2f}','meaning':'Sağlıklı'})
+        elif c > e21 and c < e50: score += 1; reasons.append({'icon':'⚠️','title':'KARIŞIK','detail':'EMA21↑ EMA50↓','meaning':'Zayıf'})
+        elif c < e50:
+            if is_dip:
+                score += 2; reasons.append({'icon':'🎯','title':'DİP DÖNÜŞÜ - EMA ALTI NORMAL','detail':f'RSI:{rsi:.1f} dönüyor + hacim','meaning':'EMA altı ama dip dönüşü!'})
+            else:
+                score -= 3; reasons.append({'icon':'🔴','title':'EMA50 ALTINDA','detail':f'<{e50:.2f}','meaning':'AŞAĞI'})
     
+    # EMA50 KIRILIM/KAYIP
     pe50 = analysis.get('prev_ema_50')
     if all(v is not None for v in [c, e50, pc, pe50]):
-        if pc <= pe50 and c > e50: score += 5; reasons.append({'icon':'🎯','title':'EMA50 KIRILDI!','detail':'Üstüne çıktı','meaning':'UPTREND başladı'})
-        elif pc > pe50 and c < e50: score -= 5; reasons.append({'icon':'🔴','title':'EMA50 KAYBEDİLDİ','detail':'Altına indi','meaning':'BOZULUYOR'})
+        if pc <= pe50 and c > e50: score += 5; reasons.append({'icon':'🎯','title':'EMA50 KIRILDI!','detail':'Üstüne çıktı','meaning':'UPTREND'})
+        elif pc > pe50 and c < e50:
+            if not is_dip: score -= 5; reasons.append({'icon':'🔴','title':'EMA50 KAYBEDİLDİ','detail':'Altına indi','meaning':'BOZULUYOR'})
     
+    # GOLDEN CROSS
     pe9 = analysis.get('prev_ema_9'); pe21 = analysis.get('prev_ema_21')
     if all(v is not None for v in [e9, e21, pe9, pe21]):
         if pe9 <= pe21 and e9 > e21: score += 3; reasons.append({'icon':'⭐','title':'GOLDEN CROSS','detail':'EMA9>EMA21','meaning':'Dönüş'})
@@ -149,8 +172,7 @@ def score_trend(analysis):
         elif adx > 15: score += 1
     
     return min(score, 25), reasons
-
-
+    
 
 def score_wavetrend(analysis):
     score = 0; reasons = []
@@ -162,7 +184,7 @@ def score_wavetrend(analysis):
             if wt1 < -53: return 8, [{'icon':'🌊','title':'WT DİP DÖNÜŞÜ!','detail':f'WT1:{wt1:.1f}','meaning':'Mükemmel AL'}]
             else: return 6, [{'icon':'🌊','title':'WT AL KESİŞİMİ','detail':'WT1>WT2','meaning':'Yeni yükseliş'}]
     if wt1 > wt2:
-        if wt1 < -40: score = 5; reasons.append({'icon':'🌊','title':'WT DİP BÖLGESİ','detail':f'WT1:{wt1:.1f}','meaning':'Dipten dönüş'})
+        if wt1 < -40: score = 5; reasons.append({'icon':'🌊','title':'WT DİP','detail':f'WT1:{wt1:.1f}','meaning':'Dipten dönüş'})
         elif wt1 < 30: score = 4; reasons.append({'icon':'🌊','title':'WT POZİTİF','detail':'WT1>WT2','meaning':'Yükseliş'})
         elif wt1 < 50: score = 3
         elif wt1 > 60: reasons.append({'icon':'⚠️','title':'WT AŞIRI ALIM','detail':f'WT1:{wt1:.1f}','meaning':'Düzeltme gelebilir'})
@@ -176,9 +198,9 @@ def score_dual_confirmation(analysis):
     smi = analysis.get('smi'); ss = analysis.get('smi_signal')
     if not all(v is not None for v in [wt1, wt2, smi, ss]): return 0, []
     if wt1 > wt2 and smi > ss:
-        if wt1 < -30 and smi < -30: score = 5; reasons.append({'icon':'🎯','title':'ÇİFTLİ ONAY: DİP','detail':'WT+SMI dip dönüyor','meaning':'Mükemmel onay!'})
-        elif wt1 < 50 and -40 < smi < 40: score = 4; reasons.append({'icon':'🎯','title':'ÇİFTLİ ONAY','detail':'İkisi pozitif','meaning':'Güçlü destek'})
-        else: score = 2
+        if wt1 < -30 and smi < -30: score = 3; reasons.append({'icon':'🎯','title':'ÇİFTLİ ONAY: DİP','detail':'WT+SMI dip','meaning':'Mükemmel!'})
+        elif wt1 < 50 and -40 < smi < 40: score = 2; reasons.append({'icon':'🎯','title':'ÇİFTLİ ONAY','detail':'İkisi pozitif','meaning':'Destek'})
+        else: score = 1
     return score, reasons
 
 
@@ -194,10 +216,10 @@ def score_position_bonus(analysis):
     if rvol >= 1.3: cond += 1
     if 45 <= rsi <= 70: cond += 1
     if sd == 1: cond += 1
-    if cond >= 6: score = 10; reasons.append({'icon':'✨','title':'MÜKEMMEL POZİSYON','detail':f'{cond}/6','meaning':'Çok güçlü'})
-    elif cond == 5: score = 8; reasons.append({'icon':'✨','title':'ÇOK İYİ POZİSYON','detail':f'{cond}/6','meaning':'Güçlü'})
-    elif cond == 4: score = 5; reasons.append({'icon':'📈','title':'İYİ POZİSYON','detail':f'{cond}/6','meaning':'Sağlıklı'})
-    elif cond == 3: score = 3
+    if cond >= 6: score = 5; reasons.append({'icon':'✨','title':'MÜKEMMEL POZİSYON','detail':f'{cond}/6','meaning':'Çok güçlü'})
+    elif cond == 5: score = 4; reasons.append({'icon':'✨','title':'ÇOK İYİ POZİSYON','detail':f'{cond}/6','meaning':'Güçlü'})
+    elif cond == 4: score = 3
+    elif cond == 3: score = 1
     return score, reasons
 
 
@@ -208,12 +230,12 @@ def score_vwap_pivot(analysis):
     if not (c and p): return 0, []
     if r2 and c > r2:
         if r3 and c < r3: score = 15; reasons.append({'icon':'🚀','title':'R2 KIRILDI!','detail':f'R2({r2:.2f})','meaning':'Çok güçlü'})
-        else: score = 13; reasons.append({'icon':'🚀','title':'R2 ÜSTÜNDE','detail':'R2 geçildi','meaning':'Güçlü yukarı'})
-    elif r1 and r2 and c > r1 and c <= r2: score = 11; reasons.append({'icon':'🎯','title':'R1 KIRILDI','detail':f'R1({r1:.2f})','meaning':'Yukarı momentum'})
+        else: score = 13; reasons.append({'icon':'🚀','title':'R2 ÜSTÜNDE','detail':'Geçildi','meaning':'Güçlü'})
+    elif r1 and r2 and c > r1 and c <= r2: score = 11; reasons.append({'icon':'🎯','title':'R1 KIRILDI','detail':f'R1({r1:.2f})','meaning':'Yukarı'})
     elif r1 and c > p and c <= r1:
         d = ((r1-c)/c)*100
         if d < 1: score = 10; reasons.append({'icon':'🎯','title':'R1 YAKININDA','detail':'Test','meaning':'Kırılım yakın'})
-        else: score = 8; reasons.append({'icon':'📈','title':'PİVOT ÜSTÜ','detail':'Pivot üstünde','meaning':'Alıcılar kontrolde'})
+        else: score = 8; reasons.append({'icon':'📈','title':'PİVOT ÜSTÜ','detail':'Üstünde','meaning':'Alıcılar kontrolde'})
     elif p and abs(c-p)/p < 0.005: score = 6; reasons.append({'icon':'🎯','title':'PİVOT TESTİ','detail':'Kritik','meaning':'Yön belirleniyor'})
     elif s1 and p and c > s1 and c < p: score = 4
     return min(score, 15), reasons
@@ -249,16 +271,18 @@ def score_liquidity(analysis):
 
 
 # ════════════════════════════════════════════════════════════
-# TOPLAM PUAN - DENGELI SİSTEM
+# TOPLAM PUAN - DENGELİ + DİP DÖNÜŞÜ + GÜÇLÜ TREND
 # ════════════════════════════════════════════════════════════
 
 def calculate_total_score(analysis):
     """
-    DENGELI SKOR:
-    Temel: max 100
-    Bonus: max +20 (temel + bonus = max 100)
-    Ceza: düşürebilir
-    Tavan adayı: SADECE %5-8 arası + hacim
+    DENGELİ SKOR:
+    - Temel: max 100
+    - Bonus: düşük (şişirme yok)
+    - Dip dönüşü: EMA cezasız, RSI 8 puan
+    - Güçlü trend: RSI 75-85 puan alır
+    - Tavan: %5-8 arası + hacim
+    - 100 puan: Gerçekten mükemmel!
     """
     vol_s, vol_r = score_volume(analysis)
     mom_s, mom_r = score_momentum(analysis)
@@ -273,19 +297,20 @@ def calculate_total_score(analysis):
     th_s, th_r = score_trend_health(analysis)
     ir_s, ir_r = score_intraday_range(analysis)
     
-    # TEMEL SKOR (max 100)
+    # TEMEL (max 100)
     base = min(vol_s + mom_s + tre_s + wt_s + vwp_s + brk_s + liq_s, 100)
     
-    # BONUS (max +20)
-    bonus = min(dual_s + pos_s, 20)
+    # BONUS (düşük! max ~8)
+    bonus = dual_s + pos_s
     
-    # AYARLAMA (negatif olabilir)
+    # AYARLAMA (sınırlı)
     adj = vt_s + th_s + ir_s
+    adj = max(-10, min(adj, 10))
     
     total = base + bonus + adj
     all_reasons = vol_r + mom_r + tre_r + wt_r + vwp_r + brk_r + liq_r + dual_r + pos_r + vt_r + th_r + ir_r
     
-    # AKILLI TAVAN BONUSU
+    # TAVAN BONUSU
     cp = analysis.get('current_price'); pc = analysis.get('prev_close'); rvol = analysis.get('rvol', 1.0)
     
     if cp and pc and pc > 0:
@@ -294,23 +319,22 @@ def calculate_total_score(analysis):
         
         # ZATEN TAVAN
         if dc >= 9.5: b = 0
-        # TAVAN YAKIN (RİSKLİ)
+        # TAVAN YAKIN
         elif dc >= 8:
-            if rvol >= 2: b, bt, m = 5, f'⚠️ TAVAN YAKIN +%{dc:.1f}', 'Tavana yakın - RİSKLİ'
-            elif rvol >= 1.5: b, bt, m = 3, f'⚠️ TAVAN YAKIN +%{dc:.1f}', 'Dikkatli'
-        # GERÇEK TAVAN ADAYI (%5-8)
+            if rvol >= 2: b, bt, m = 3, f'⚠️ TAVAN YAKIN +%{dc:.1f}', 'RİSKLİ'
+            elif rvol >= 1.5: b, bt, m = 2, f'⚠️ TAVAN YAKIN +%{dc:.1f}', 'Dikkat'
+        # GERÇEK TAVAN ADAYI
         elif dc >= 5:
-            if rvol >= 2: b, bt, m = 12, f'🚀 TAVAN ADAYI! +%{dc:.1f}', 'Tavan olabilir - ideal giriş'
-            elif rvol >= 1.5: b, bt, m = 10, f'🚀 GÜÇLÜ TAVAN ADAYI +%{dc:.1f}', 'Tavan adayı'
-            elif rvol >= 1.0: b, bt, m = 6, f'🚀 GÜNLÜK +%{dc:.1f}', 'Güçlü yükseliş'
+            if rvol >= 2: b, bt, m = 8, f'🚀 TAVAN ADAYI! +%{dc:.1f}', 'Tavan olabilir'
+            elif rvol >= 1.5: b, bt, m = 6, f'🚀 GÜÇLÜ TAVAN ADAYI +%{dc:.1f}', 'Tavan adayı'
+            elif rvol >= 1.0: b, bt, m = 4, f'🚀 GÜNLÜK +%{dc:.1f}', 'Güçlü'
         # GÜÇLÜ GÜN
         elif dc >= 3:
-            if rvol >= 1.5: b, bt, m = 5, f'📈 GÜÇLÜ GÜN +%{dc:.1f}', 'Sağlıklı'
-            elif rvol >= 1.0: b, bt, m = 3, f'📈 POZİTİF +%{dc:.1f}', 'Yukarı'
+            if rvol >= 1.5: b, bt, m = 3, f'📈 GÜÇLÜ GÜN +%{dc:.1f}', 'Sağlıklı'
+            elif rvol >= 1.0: b, bt, m = 2, f'📈 POZİTİF +%{dc:.1f}', 'Yukarı'
         # HAFİF
         elif dc >= 1.5:
-            if rvol >= 1.5: b = 2
-            elif rvol >= 1.0: b = 1
+            if rvol >= 1.5: b = 1
         
         if b > 0:
             total += b
@@ -355,20 +379,30 @@ def generate_warnings(analysis):
     warnings = []; suggestions = []
     rsi = analysis.get('rsi'); rvol = analysis.get('rvol')
     cp = analysis.get('current_price'); pc = analysis.get('prev_close')
+    
+    # TAVAN UYARISI
     if cp and pc and pc > 0:
         dc = ((cp-pc)/pc)*100
         if dc >= 9.5: warnings.append({'level':'EXTREME','icon':'🔴🔴','title':'ZATEN TAVAN!','detail':f'+%{dc:.2f}','action':'GİRMEYİN!'})
         elif dc >= 8: warnings.append({'level':'HIGH','icon':'⚠️','title':'TAVANA YAKIN','detail':f'+%{dc:.2f}','action':'Riskli'})
+    
+    # INTRADAY GERİ ÇEKİLME
     th = analysis.get('high'); tl = analysis.get('low')
-    if th and tl and tl > 0:
+    if th and tl and tl > 0 and cp:
         ir = ((th-tl)/tl)*100
         if ir >= 8:
             dth = ((th-cp)/th)*100 if th > 0 else 100
             if dth > 3: warnings.append({'level':'MEDIUM','icon':'⚠️','title':'GERİ ÇEKİLME','detail':f'Zirve:{th:.2f} Şuan:{cp:.2f}','action':'Zirveden düştü'})
+    
+    # RSI UYARILARI (GÜNCELLENMİŞ!)
     if rsi:
-        if rsi > 80: warnings.append({'level':'EXTREME','icon':'🔴🔴','title':'RSI ÇOK YÜKSEK','detail':f'{rsi:.1f}','action':'KAR AL!'})
-        elif rsi > 75: warnings.append({'level':'HIGH','icon':'🔴','title':'RSI AŞIRI ALIM','detail':f'{rsi:.1f}','action':'Kısmi kar al'})
+        if rsi > 90: warnings.append({'level':'EXTREME','icon':'🔴🔴','title':'RSI AŞIRI!','detail':f'RSI:{rsi:.1f}','action':'KAR AL! Düzeltme çok yakın!'})
+        elif rsi > 85: warnings.append({'level':'HIGH','icon':'🔴','title':'RSI ÇOK YÜKSEK','detail':f'RSI:{rsi:.1f}','action':'Kısmi kar al, stop yukarı çek'})
+        elif rsi > 75: warnings.append({'level':'MEDIUM','icon':'⚠️','title':'RSI GÜÇLÜ TREND','detail':f'RSI:{rsi:.1f}','action':'Stop yukarı çek, trend devam edebilir'})
+    
+    # HACİM UYARISI
     if rvol is not None and rvol < 0.7: warnings.append({'level':'LOW','icon':'⚠️','title':'HACİM DÜŞÜK','detail':f'RVOL:{rvol:.2f}x','action':'Dikkatli'})
+    
     return warnings, suggestions
 
 
@@ -404,9 +438,8 @@ def generate_signal(symbol, analysis, history_df=None):
            'wt1':analysis.get('wt1'),'wt2':analysis.get('wt2'),'smi':analysis.get('smi'),'smi_signal':analysis.get('smi_signal')}
     
     holding = suggest_holding_period(ts, ind)
-    
-    filled = int(ts/5); empty = 20 - filled
-    sb = '█' * filled + '░' * empty
+    filled = int(ts/5); empty = 20-filled
+    sb = '█'*filled + '░'*empty
     
     if ts >= 85: stars = '🟢🟢🟢🟢🟢'
     elif ts >= 75: stars = '🟢🟢🟢🟢⚪'
@@ -439,4 +472,4 @@ def format_signal_message(signal):
 
 
 if __name__ == "__main__":
-    print("✅ Signal Engine - DENGELI Skor + Sıkı Tavan Tespiti")
+    print("✅ Signal Engine - SON HAL: Dengeli + Dip Dönüşü + Güçlü Trend + Sıkı Tavan")
