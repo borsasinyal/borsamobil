@@ -1,6 +1,6 @@
 """
 Profesyonel Zamanlayıcı
-GÜNLÜK + SAATLİK tarama + Sinyal takip + Detaylı Gün Sonu
+GÜNLÜK + SAATLİK + 4 SAATLİK tarama + Sinyal takip + Detaylı Gün Sonu
 """
 
 import sys
@@ -17,9 +17,8 @@ from services.data_fetcher import fetch_all_daily, fetch_all_15m
 from services.scanner import (
     scan_all_stocks,
     scan_hourly_stocks,
-    filter_new_signals,
-    scan_momentum_strategy,
-    scan_breakout_strategy
+    scan_4h_stocks,
+    filter_new_signals
 )
 from telegram_bot.bot import send_message, send_multiple_signals
 
@@ -130,30 +129,44 @@ def job_hourly_scan():
         log_event(f"⚠️ Saatlik hata: {e}")
 
 
-def job_strategy_scan():
-    log_event("💎 STRATEJİ")
-    send_message(f"💎 <b>STRATEJİ TARAMASI</b>\n⏰ {tr_now().strftime('%H:%M')}")
+# ════════════════════════════════════════════════════════════
+# 4 SAATLİK TARAMA (14:15)
+# ════════════════════════════════════════════════════════════
+
+def job_4h_scan():
+    """
+    4 SAATLİK TARAMA - 14:15'te çalışır
+    İlk 4H mum (10:00-14:00) kapandıktan sonra
+    Tüm BIST hisselerini 4H verisiyle tarar
+    """
+    log_event("🕐 4 SAATLİK TARAMA BAŞLADI")
+    
+    send_message(f"""🕐🕐🕐━━━━━━━━━━━━━━━━━🕐🕐🕐
+   <b>4 SAATLİK TARAMA</b>
+🕐🕐🕐━━━━━━━━━━━━━━━━━🕐🕐🕐
+
+⏰ {tr_now().strftime('%H:%M - %d.%m.%Y')}
+📊 İlk 4H mum kapandı (10:00-14:00)
+🔍 {len(BIST_SYMBOLS)} hisse taranıyor...
+<i>4H mumlar daha güvenilir sinyal verir</i>""")
+    
     try:
-        momentum = scan_momentum_strategy(min_score=65)
-        breakout = scan_breakout_strategy(min_score=65)
-        msg = f"💎 <b>STRATEJİ BİTTİ</b>\n🚀 Momentum: {len(momentum)}\n💥 Kırılım: {len(breakout)}\n\n"
-        if momentum:
-            msg += "📈 <b>MOMENTUM:</b>\n"
-            for s in momentum[:3]:
-                msg += f"   • <b>{s['symbol']}</b> ({s['score']}/100)\n"
-            msg += "\n"
-        if breakout:
-            msg += "💥 <b>KIRILIM:</b>\n"
-            for s in breakout[:3]:
-                msg += f"   • <b>{s['symbol']}</b> ({s['score']}/100)\n"
-        if not momentum and not breakout: msg += "⚠️ <i>Strateji koşullarına uyan yok</i>"
-        send_message(msg)
-        strong = [s for s in momentum + breakout if s['score'] >= 75]
-        if strong:
-            send_message(f"🔥 <b>{len(strong)} GÜÇLÜ STRATEJİ:</b>")
-            send_multiple_signals(strong[:3], max_signals=3)
+        from telegram_bot.bot import send_4h_signals
+        
+        signals_4h = scan_4h_stocks(min_score=65, symbols_list=BIST_SYMBOLS)
+        
+        if signals_4h:
+            log_event(f"🕐 {len(signals_4h)} adet 4H sinyal bulundu")
+            send_4h_signals(signals_4h, max_signals=5)
+        else:
+            send_message(f"""🕐 <b>4 SAATLİK TARAMA</b>
+━━━━━━━━━━━━━━━━━━━━━━━
+⚠️ Güçlü 4H sinyal bulunamadı
+📊 Piyasa kararsız veya zayıf
+<i>Sonraki taramalar saatlik devam eder</i>""")
     except Exception as e:
-        send_message(f"❌ <b>Hata</b>\n<code>{str(e)[:200]}</code>")
+        log_event(f"❌ 4H hata: {e}")
+        send_message(f"❌ <b>4H Tarama Hatası</b>\n<code>{str(e)[:200]}</code>")
 
 
 # ════════════════════════════════════════════════════════════
@@ -173,7 +186,6 @@ def job_end_of_day_report():
 ⏰ {tr_now().strftime('%H:%M - %d.%m.%Y')}
 📊 Analiz ediliyor...""")
         
-        # 1. TÜM HİSSELER
         movers_data = []
         tomorrow_candidates = []
         
@@ -213,7 +225,6 @@ def job_end_of_day_report():
                     'yesterday_close': yesterday_close
                 })
                 
-                # YARIN İÇİN ADAY MI?
                 if (green_candle and candle_strength > 60 and rvol >= 1.2 and
                     daily_change > 0 and daily_change < 9.5 and volume_tl > 2_000_000):
                     tomorrow_candidates.append({
@@ -227,7 +238,6 @@ def job_end_of_day_report():
                     })
             except: continue
         
-        # 2. YARIN ADAYLARINI DETAYLI ANALİZ
         tomorrow_signals = []
         
         for candidate in tomorrow_candidates:
@@ -255,32 +265,25 @@ def job_end_of_day_report():
                 macd = analysis.get('macd')
                 macd_signal = analysis.get('macd_signal')
                 
-                # YARINKI POTANSİYEL SKORU
                 ts = 0
                 tr_reasons = []
                 
-                # Güçlü kapanış
                 if candidate['candle_strength'] > 80: ts += 25; tr_reasons.append("💪 Çok güçlü kapanış")
                 elif candidate['candle_strength'] > 60: ts += 15; tr_reasons.append("📈 Güçlü kapanış")
                 
-                # Hacim
                 if candidate['rvol'] >= 2: ts += 20; tr_reasons.append(f"💥 Hacim {candidate['rvol']:.1f}x")
                 elif candidate['rvol'] >= 1.5: ts += 12; tr_reasons.append(f"📊 Hacim {candidate['rvol']:.1f}x")
                 elif candidate['rvol'] >= 1.2: ts += 5
                 
-                # RSI
                 if 50 <= rsi <= 65: ts += 15; tr_reasons.append(f"⚡ RSI {rsi:.0f} (ideal)")
                 elif 45 <= rsi < 50: ts += 10
                 elif rsi > 70: ts -= 10; tr_reasons.append(f"⚠️ RSI {rsi:.0f} (yüksek)")
                 
-                # EMA50
                 if current and ema_50 and current > ema_50: ts += 15; tr_reasons.append("📈 EMA50 üstünde")
                 elif current and ema_50 and current < ema_50: ts -= 5
                 
-                # MACD
                 if macd and macd_signal and macd > macd_signal: ts += 10; tr_reasons.append("🚀 MACD pozitif")
                 
-                # Bugünkü yükseliş
                 if 3 <= candidate['daily_change'] <= 7: ts += 10; tr_reasons.append(f"📈 Bugün +%{candidate['daily_change']:.1f}")
                 elif 1 <= candidate['daily_change'] < 3: ts += 5
                 
@@ -304,14 +307,12 @@ def job_end_of_day_report():
         tomorrow_signals.sort(key=lambda x: x['tomorrow_score'], reverse=True)
         top_5 = tomorrow_signals[:5]
         
-        # 3. İSTATİSTİKLER
         liquid = [m for m in movers_data if m['volume_tl'] > 1_000_000]
         gainers = sorted([m for m in liquid if m['daily_change'] > 0], key=lambda x: x['daily_change'], reverse=True)[:5]
         losers = sorted([m for m in liquid if m['daily_change'] < 0], key=lambda x: x['daily_change'])[:5]
         total_up = len([m for m in movers_data if m['daily_change'] > 0])
         total_down = len([m for m in movers_data if m['daily_change'] < 0])
         
-        # 4. RAPOR
         msg = f"""🌆 <b>GÜN SONU RAPORU</b>
 ━━━━━━━━━━━━━━━━━━━━━━━
 📅 {tr_now().strftime('%d.%m.%Y - %A')}
@@ -339,7 +340,6 @@ def job_end_of_day_report():
                 msg += f"{i}. <b>{l['symbol']}</b> <b>%{l['daily_change']:.2f}</b> ({l['price']:.2f} TL)\n"
             msg += "\n"
         
-        # ⭐ YARIN İÇİN EN İYİ 5 HİSSE
         if top_5:
             msg += "⭐⭐⭐━━━━━━━━━━━━━━━━━⭐⭐⭐\n"
             msg += "   <b>YARIN İÇİN EN İYİ 5 HİSSE</b>\n"
@@ -368,7 +368,6 @@ def job_end_of_day_report():
             msg += "⭐ <b>YARIN İÇİN ADAY</b>\n━━━━━━━━━━━━━━━━━━━━━━━\n"
             msg += "⚠️ <i>Güçlü aday bulunamadı</i>\n\n"
         
-        # STRATEJİ
         msg += "🎯 <b>YARIN STRATEJİ</b>\n━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         if total_up > total_down * 1.5:
             msg += "✅ Piyasa güçlü, AL fırsatlarına odaklan\n✅ Yukarıdaki 5 hisseyi izle\n\n"
@@ -424,7 +423,7 @@ def setup_scheduler():
     scheduler.add_job(job_market_open_scan, CronTrigger(hour=10, minute=35, day_of_week='mon-fri'), id='open')
     scheduler.add_job(job_quick_scan, CronTrigger(minute='30,45', hour='10-17', day_of_week='mon-fri'), id='quick')
     scheduler.add_job(job_full_scan, CronTrigger(minute=0, hour='11-17', day_of_week='mon-fri'), id='full')
-    scheduler.add_job(job_strategy_scan, CronTrigger(hour=14, minute=0, day_of_week='mon-fri'), id='strategy')
+    scheduler.add_job(job_4h_scan, CronTrigger(hour=14, minute=15, day_of_week='mon-fri'), id='4h_scan')
     scheduler.add_job(job_end_of_day_report, CronTrigger(hour=18, minute=30, day_of_week='mon-fri'), id='eod')
     return scheduler
 
@@ -439,7 +438,7 @@ def start_scheduler():
 if __name__ == "__main__":
     print(f"\n⏰ ZAMANLAYICI - {tr_now().strftime('%H:%M')}")
     print("1→Başlat 2→Sabah 3→PreMarket 4→Açılış 5→Hızlı")
-    print("6→Tam 7→Strateji 8→GünSonu 9→Tam+Saatlik+Takip 10→Saatlik")
+    print("6→Tam 7→4H Tarama 8→GünSonu 9→Tam+Saatlik+Takip 10→Saatlik")
     
     c = input("\nSeçim: ").strip()
     if c=="1": start_scheduler()
@@ -448,7 +447,7 @@ if __name__ == "__main__":
     elif c=="4": job_market_open_scan()
     elif c=="5": job_quick_scan()
     elif c=="6": job_full_scan()
-    elif c=="7": job_strategy_scan()
+    elif c=="7": job_4h_scan()
     elif c=="8": job_end_of_day_report()
     elif c=="9": job_full_scan_with_tracking()
     elif c=="10": job_hourly_scan()
