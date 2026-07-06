@@ -1,6 +1,6 @@
 """
 Profesyonel Teknik Analiz Motoru
-WaveTrend + SMI + Saatlik Analiz Desteği
+WaveTrend + SMI + Saatlik + 4 Saatlik Analiz Desteği
 """
 
 import pandas as pd
@@ -267,17 +267,16 @@ def detect_momentum_status(data, analysis):
 
 
 # ════════════════════════════════════════════════════════════
-# ANA ANALİZ FONKSİYONU (Günlük + Saatlik aynı mantık)
+# ANA ANALİZ FONKSİYONU (Günlük + Saatlik + 4H aynı mantık)
 # ════════════════════════════════════════════════════════════
 
 def analyze_stock(df):
-    """Tüm indikatörleri hesapla - Günlük VE Saatlik veri için çalışır"""
+    """Tüm indikatörleri hesapla - Günlük, Saatlik, 4H veri için çalışır"""
     if len(df) < 20:
         return None
 
     df = df.sort_values('date').reset_index(drop=True)
 
-    # Minimum veri kontrolü
     min_period = min(50, len(df))
     
     df['rsi'] = calculate_rsi(df)
@@ -364,25 +363,37 @@ def analyze_stock(df):
 
 
 # ════════════════════════════════════════════════════════════
-# YENİ: SAATLİK ANALİZ FONKSİYONU
+# SAATLİK ANALİZ
 # ════════════════════════════════════════════════════════════
 
 def analyze_stock_hourly(symbol):
-    """
-    SAATLİK veriden analiz yap
-    TradingView'dan saatlik mum çeker ve analyze_stock ile analiz eder
-    """
+    """SAATLİK veriden analiz yap"""
     try:
         from services.tradingview_fetcher import fetch_stock_tv, TV_AVAILABLE
-        
         if not TV_AVAILABLE:
             return None
-        
         data = fetch_stock_tv(symbol, n_bars=100, interval='hourly')
-        
         if not data or len(data) < 20:
             return None
-        
+        df = pd.DataFrame(data)
+        return analyze_stock(df)
+    except:
+        return None
+
+
+# ════════════════════════════════════════════════════════════
+# 4 SAATLİK ANALİZ
+# ════════════════════════════════════════════════════════════
+
+def analyze_stock_4h(symbol):
+    """4 SAATLİK veriden analiz yap - 14:15 taraması için"""
+    try:
+        from services.tradingview_fetcher import fetch_stock_tv, TV_AVAILABLE
+        if not TV_AVAILABLE:
+            return None
+        data = fetch_stock_tv(symbol, n_bars=150, interval='4h')
+        if not data or len(data) < 20:
+            return None
         df = pd.DataFrame(data)
         return analyze_stock(df)
     except:
@@ -390,4 +401,4 @@ def analyze_stock_hourly(symbol):
 
 
 if __name__ == "__main__":
-    print("✅ Analyzer - Günlük + Saatlik analiz desteği")
+    print("✅ Analyzer - Günlük + Saatlik + 4H analiz desteği")
