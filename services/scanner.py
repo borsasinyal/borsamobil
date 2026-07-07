@@ -1,6 +1,7 @@
 """
 Profesyonel Tarama Motoru
-GÜNLÜK + SAATLİK + 4 SAATLİK tarama + AKILLI SPAM FİLTRESİ
+GÜNLÜK + SAATLİK + 4 SAATLİK + AKILLI SPAM FİLTRESİ
+Esnetilmiş güvenlik filtreleri (Dip dönüşü kaçırma önleme)
 """
 
 import sys
@@ -22,7 +23,30 @@ from services.signal_engine import generate_signal, format_signal_message
 
 
 # ════════════════════════════════════════════════════════════
-# GÜVENLİK FİLTRELERİ
+# GÜÇLÜ MUM TESPİTİ (Filtre esnetme için)
+# ════════════════════════════════════════════════════════════
+
+def has_strong_reversal_candle(analysis):
+    """Güçlü dip dönüş formasyonu var mı?"""
+    candle_patterns = analysis.get('candle_patterns', [])
+    strong_patterns = ['three_white_soldiers', 'bullish_engulfing', 'morning_star', 'hammer']
+    for p in candle_patterns:
+        if p.get('key') in strong_patterns:
+            return True
+    return False
+
+
+def has_rsi_reversal(analysis):
+    """RSI dip dönüşü sinyali var mı?"""
+    rsi = analysis.get('rsi')
+    prev_rsi = analysis.get('prev_rsi')
+    if rsi and prev_rsi and rsi < 40 and rsi > prev_rsi:
+        return True
+    return False
+
+
+# ════════════════════════════════════════════════════════════
+# GÜVENLİK FİLTRELERİ (ESNETİLMİŞ)
 # ════════════════════════════════════════════════════════════
 
 def passes_safety_filters(symbol, df, analysis):
@@ -40,29 +64,44 @@ def passes_safety_filters(symbol, df, analysis):
     if avg_volume_tl < 2_000_000:
         return False, f"Likidite düşük ({avg_volume_tl/1_000_000:.1f}M TL)"
     
+    # 🆕 DİP DÖNÜŞ MUAFİYETİ KONTROLÜ
+    is_reversal_candidate = has_strong_reversal_candle(analysis) or has_rsi_reversal(analysis)
+    
+    # DÜŞEN BIÇAK FİLTRESİ (Dip dönüşü varsa esnet!)
     last_5_closes = df_sorted['close'].tail(5).tolist()
     if len(last_5_closes) >= 5:
         all_declining = all(last_5_closes[i] > last_5_closes[i+1] for i in range(len(last_5_closes)-1))
         if all_declining:
             total_drop = ((last_5_closes[0] - last_5_closes[-1]) / last_5_closes[0]) * 100
-            if total_drop > 8:
+            # DİP DÖNÜŞÜ VARSA: %15'e kadar kabul (normalde %8)
+            drop_threshold = 15 if is_reversal_candidate else 8
+            if total_drop > drop_threshold:
                 return False, f"Düşen bıçak ({total_drop:.1f}%)"
     
+    # 30 GÜNLÜK DÜŞÜŞ FİLTRESİ (Dip dönüşü varsa esnet!)
     if len(df_sorted) >= 30:
         price_30 = df_sorted['close'].iloc[-30]
         drop_30 = ((price_30 - current_price) / price_30) * 100
-        if drop_30 > 35:
+        # DİP DÖNÜŞÜ VARSA: %50'ye kadar kabul (normalde %35)
+        drop30_threshold = 50 if is_reversal_candidate else 35
+        if drop_30 > drop30_threshold:
             return False, f"30 günde %{drop_30:.0f} düşüş"
     
+    # ATR FİLTRESİ
     atr = analysis.get('atr')
     if atr is not None and current_price > 0:
         atr_pct = (atr / current_price) * 100
         if atr_pct > 10:
             return False, f"Aşırı volatil (ATR: %{atr_pct:.1f})"
     
+    # 🆕 ADX FİLTRESİ (12 → 8, dip dönüşü için esnetildi)
     adx = analysis.get('adx')
-    if adx is not None and adx < 12:
-        return False, f"Trend yok (ADX: {adx:.1f})"
+    if adx is not None:
+        # Dip dönüşü adayı ise ADX filtresi TAMAMEN muaf
+        if is_reversal_candidate:
+            pass  # ADX kontrol etme
+        elif adx < 8:  # 12 → 8
+            return False, f"Trend yok (ADX: {adx:.1f})"
     
     return True, "OK"
 
@@ -150,14 +189,11 @@ def scan_single_stock(symbol, min_score=65, use_15m=False, use_hourly=False, use
 
 
 # ════════════════════════════════════════════════════════════
-# 🆕 AKILLI SPAM FİLTRESİ
+# AKILLI SPAM FİLTRESİ
 # ════════════════════════════════════════════════════════════
 
 def get_last_signal_info(symbol, hours=4):
-    """
-    Son X saatte gönderilen sinyal bilgisini al
-    Returns: (last_score, last_price) veya (None, None)
-    """
+    """Son X saatte gönderilen sinyal bilgisini al"""
     try:
         conn = get_connection()
         cursor = conn.cursor()
@@ -182,19 +218,9 @@ def get_last_signal_info(symbol, hours=4):
 def apply_smart_spam_filter(signals, hours=4, min_score_improvement=10):
     """
     AKILLI SPAM FİLTRESİ
-    
-    Kurallar:
-    1. Aynı hisse son X saatte gelmişse → normalde filtrele
-    2. AMA yeni skor eskisinden %min_score_improvement+ yüksekse → GÖNDER
-    3. AMA fiyat %3+ değişmişse (yeni hareket var) → GÖNDER
-    
-    Args:
-        signals: Sinyal listesi
-        hours: Kaç saat geriye bak
-        min_score_improvement: Minimum skor artışı (puan olarak)
-    
-    Returns:
-        Filtrelenmiş sinyal listesi
+    - Aynı hisse son X saatte gelmişse filtrele
+    - AMA skor +10 arttıysa → GÖNDER
+    - AMA fiyat %3+ değiştiyse → GÖNDER
     """
     if not signals:
         return signals
@@ -210,20 +236,16 @@ def apply_smart_spam_filter(signals, hours=4, min_score_improvement=10):
         
         last_score, last_price = get_last_signal_info(symbol, hours)
         
-        # İlk kez geliyor → GÖNDER
         if last_score is None:
             filtered_signals.append(signal)
             continue
         
-        # Skor iyileşmesi kontrolü
         score_improvement = new_score - last_score
         
-        # Fiyat değişimi kontrolü
         price_change_pct = 0
         if last_price and last_price > 0:
             price_change_pct = abs((new_price - last_price) / last_price) * 100
         
-        # KURAL 1: Skor +10 puan arttıysa → GÖNDER (fırsat büyüdü)
         if score_improvement >= min_score_improvement:
             signal['spam_upgrade_reason'] = f"⬆️ Skor +{score_improvement} arttı ({last_score}→{new_score})"
             filtered_signals.append(signal)
@@ -231,7 +253,6 @@ def apply_smart_spam_filter(signals, hours=4, min_score_improvement=10):
             print(f"   ⬆️ {symbol}: Skor iyileşti (+{score_improvement}), gönderiliyor")
             continue
         
-        # KURAL 2: Fiyat %3+ değişti → YENİ HAREKET, GÖNDER
         if price_change_pct >= 3:
             signal['spam_upgrade_reason'] = f"📊 Fiyat değişti (%{price_change_pct:.1f})"
             filtered_signals.append(signal)
@@ -239,7 +260,6 @@ def apply_smart_spam_filter(signals, hours=4, min_score_improvement=10):
             print(f"   📊 {symbol}: Fiyat %{price_change_pct:.1f} değişti, gönderiliyor")
             continue
         
-        # KURAL 3: Ne skor arttı ne fiyat değişti → SPAM, FİLTRELE
         spam_filtered_count += 1
         print(f"   🔇 {symbol}: Spam (skor {last_score}→{new_score}, fiyat sabit)")
     
@@ -299,12 +319,10 @@ def scan_all_stocks(min_score=65, save_to_db=True, verbose=False, use_15m=False,
     
     signals.sort(key=lambda x: x['score'], reverse=True)
     
-    # 🆕 AKILLI SPAM FİLTRESİ (Sadece günlük tarama için)
     original_count = len(signals)
     if apply_spam_filter and not use_hourly and not use_4h:
         signals = apply_smart_spam_filter(signals, hours=4, min_score_improvement=10)
     
-    # DB'ye kaydet + Takibe al (spam filtreden geçenler için)
     for result in signals:
         if save_to_db and not use_hourly and not use_4h:
             save_signal(
@@ -353,7 +371,6 @@ def scan_all_stocks(min_score=65, save_to_db=True, verbose=False, use_15m=False,
 # ════════════════════════════════════════════════════════════
 
 def scan_hourly_stocks(min_score=60, symbols_list=None):
-    """SAATLİK VERİDEN TARAMA"""
     if symbols_list is None:
         symbols_list = BIST_SYMBOLS[:200]
     
@@ -369,7 +386,7 @@ def scan_hourly_stocks(min_score=60, symbols_list=None):
         use_hourly=True,
         symbols_list=symbols_list,
         add_to_tracker=False,
-        apply_spam_filter=False  # Saatlikte spam filtresi yok
+        apply_spam_filter=False
     )
     
     for signal in hourly_signals:
@@ -386,7 +403,6 @@ def scan_hourly_stocks(min_score=60, symbols_list=None):
 # ════════════════════════════════════════════════════════════
 
 def scan_4h_stocks(min_score=65, symbols_list=None):
-    """4 SAATLİK VERİDEN TARAMA - 14:15'te çalışır"""
     if symbols_list is None:
         symbols_list = BIST_SYMBOLS
     
@@ -402,7 +418,7 @@ def scan_4h_stocks(min_score=65, symbols_list=None):
         use_4h=True,
         symbols_list=symbols_list,
         add_to_tracker=False,
-        apply_spam_filter=False  # 4H'da spam filtresi yok
+        apply_spam_filter=False
     )
     
     for signal in signals_4h:
@@ -415,7 +431,7 @@ def scan_4h_stocks(min_score=65, symbols_list=None):
 
 
 # ════════════════════════════════════════════════════════════
-# ESKİ SPAM KORUMASI (backward compatibility için)
+# ESKİ SPAM KORUMASI
 # ════════════════════════════════════════════════════════════
 
 def is_recently_sent(symbol, hours=4):
