@@ -1,6 +1,6 @@
 """
 Profesyonel Tarama Motoru
-GÜNLÜK + SAATLİK + 4 SAATLİK tarama desteği
+GÜNLÜK + SAATLİK + 4 SAATLİK tarama + AKILLI SPAM FİLTRESİ
 """
 
 import sys
@@ -67,10 +67,6 @@ def passes_safety_filters(symbol, df, analysis):
     return True, "OK"
 
 
-# ════════════════════════════════════════════════════════════
-# SAATLİK / 4H GÜVENLİK FİLTRESİ (Daha esnek)
-# ════════════════════════════════════════════════════════════
-
 def passes_intraday_filters(symbol, analysis):
     """Saatlik ve 4H tarama için daha esnek filtreler"""
     current_price = analysis.get('current_price')
@@ -90,69 +86,36 @@ def passes_intraday_filters(symbol, analysis):
 
 def scan_single_stock(symbol, min_score=65, use_15m=False, use_hourly=False, use_4h=False):
     try:
-        # ═══════════════════════════════════════
-        # 4 SAATLİK VERİ İLE ANALİZ
-        # ═══════════════════════════════════════
         if use_4h:
             analysis = analyze_stock_4h(symbol)
-            
             if not analysis:
                 return None
-            
             passes, reason = passes_intraday_filters(symbol, analysis)
             if not passes:
-                return {
-                    'symbol': symbol.replace('.IS', ''),
-                    'filtered': True,
-                    'filter_reason': reason
-                }
-            
+                return {'symbol': symbol.replace('.IS', ''), 'filtered': True, 'filter_reason': reason}
             signal = generate_signal(symbol, analysis)
-            
-            if not signal:
+            if not signal or signal['score'] < min_score:
                 return None
-            
-            if signal['score'] < min_score:
-                return None
-            
             signal['timeframe'] = '4h'
             signal['is_4h'] = True
             signal['is_hourly'] = False
             return signal
         
-        # ═══════════════════════════════════════
-        # SAATLİK VERİ İLE ANALİZ
-        # ═══════════════════════════════════════
         elif use_hourly:
             analysis = analyze_stock_hourly(symbol)
-            
             if not analysis:
                 return None
-            
             passes, reason = passes_intraday_filters(symbol, analysis)
             if not passes:
-                return {
-                    'symbol': symbol.replace('.IS', ''),
-                    'filtered': True,
-                    'filter_reason': reason
-                }
-            
+                return {'symbol': symbol.replace('.IS', ''), 'filtered': True, 'filter_reason': reason}
             signal = generate_signal(symbol, analysis)
-            
-            if not signal:
+            if not signal or signal['score'] < min_score:
                 return None
-            
-            if signal['score'] < min_score:
-                return None
-            
             signal['timeframe'] = '1h'
             signal['is_hourly'] = True
             signal['is_4h'] = False
             return signal
         
-        # ═══════════════════════════════════════
-        # GÜNLÜK VERİ İLE ANALİZ
-        # ═══════════════════════════════════════
         elif use_15m:
             data = get_stock_history_15m(symbol, limit=500)
             if not data or len(data) < 100:
@@ -165,24 +128,15 @@ def scan_single_stock(symbol, min_score=65, use_15m=False, use_hourly=False, use
         
         df = pd.DataFrame(data)
         analysis = analyze_stock(df)
-        
         if not analysis:
             return None
         
         passes, reason = passes_safety_filters(symbol, df, analysis)
         if not passes:
-            return {
-                'symbol': symbol.replace('.IS', ''),
-                'filtered': True,
-                'filter_reason': reason
-            }
+            return {'symbol': symbol.replace('.IS', ''), 'filtered': True, 'filter_reason': reason}
         
         signal = generate_signal(symbol, analysis, df)
-        
-        if not signal:
-            return None
-        
-        if signal['score'] < min_score:
+        if not signal or signal['score'] < min_score:
             return None
         
         signal['timeframe'] = '15m' if use_15m else '1d'
@@ -196,10 +150,113 @@ def scan_single_stock(symbol, min_score=65, use_15m=False, use_hourly=False, use
 
 
 # ════════════════════════════════════════════════════════════
+# 🆕 AKILLI SPAM FİLTRESİ
+# ════════════════════════════════════════════════════════════
+
+def get_last_signal_info(symbol, hours=4):
+    """
+    Son X saatte gönderilen sinyal bilgisini al
+    Returns: (last_score, last_price) veya (None, None)
+    """
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT score, price FROM signals
+            WHERE symbol = ? 
+            AND datetime(created_at) > datetime('now', '-' || ? || ' hours')
+            ORDER BY created_at DESC
+            LIMIT 1
+        """, (symbol, hours))
+        result = cursor.fetchone()
+        conn.close()
+        
+        if result:
+            return result['score'], result['price']
+        return None, None
+    except Exception as e:
+        print(f"   ⚠️ Spam kontrol hatası: {e}")
+        return None, None
+
+
+def apply_smart_spam_filter(signals, hours=4, min_score_improvement=10):
+    """
+    AKILLI SPAM FİLTRESİ
+    
+    Kurallar:
+    1. Aynı hisse son X saatte gelmişse → normalde filtrele
+    2. AMA yeni skor eskisinden %min_score_improvement+ yüksekse → GÖNDER
+    3. AMA fiyat %3+ değişmişse (yeni hareket var) → GÖNDER
+    
+    Args:
+        signals: Sinyal listesi
+        hours: Kaç saat geriye bak
+        min_score_improvement: Minimum skor artışı (puan olarak)
+    
+    Returns:
+        Filtrelenmiş sinyal listesi
+    """
+    if not signals:
+        return signals
+    
+    filtered_signals = []
+    spam_filtered_count = 0
+    upgraded_count = 0
+    
+    for signal in signals:
+        symbol = signal.get('symbol')
+        new_score = signal.get('score', 0)
+        new_price = signal.get('current_price', 0)
+        
+        last_score, last_price = get_last_signal_info(symbol, hours)
+        
+        # İlk kez geliyor → GÖNDER
+        if last_score is None:
+            filtered_signals.append(signal)
+            continue
+        
+        # Skor iyileşmesi kontrolü
+        score_improvement = new_score - last_score
+        
+        # Fiyat değişimi kontrolü
+        price_change_pct = 0
+        if last_price and last_price > 0:
+            price_change_pct = abs((new_price - last_price) / last_price) * 100
+        
+        # KURAL 1: Skor +10 puan arttıysa → GÖNDER (fırsat büyüdü)
+        if score_improvement >= min_score_improvement:
+            signal['spam_upgrade_reason'] = f"⬆️ Skor +{score_improvement} arttı ({last_score}→{new_score})"
+            filtered_signals.append(signal)
+            upgraded_count += 1
+            print(f"   ⬆️ {symbol}: Skor iyileşti (+{score_improvement}), gönderiliyor")
+            continue
+        
+        # KURAL 2: Fiyat %3+ değişti → YENİ HAREKET, GÖNDER
+        if price_change_pct >= 3:
+            signal['spam_upgrade_reason'] = f"📊 Fiyat değişti (%{price_change_pct:.1f})"
+            filtered_signals.append(signal)
+            upgraded_count += 1
+            print(f"   📊 {symbol}: Fiyat %{price_change_pct:.1f} değişti, gönderiliyor")
+            continue
+        
+        # KURAL 3: Ne skor arttı ne fiyat değişti → SPAM, FİLTRELE
+        spam_filtered_count += 1
+        print(f"   🔇 {symbol}: Spam (skor {last_score}→{new_score}, fiyat sabit)")
+    
+    if spam_filtered_count > 0 or upgraded_count > 0:
+        print(f"\n🎯 SPAM FİLTRESİ:")
+        print(f"   🔇 Filtrelendi: {spam_filtered_count}")
+        print(f"   ⬆️ Yükseltildi: {upgraded_count}")
+        print(f"   ✅ Gönderilecek: {len(filtered_signals)}")
+    
+    return filtered_signals
+
+
+# ════════════════════════════════════════════════════════════
 # TÜM BIST TARAMA
 # ════════════════════════════════════════════════════════════
 
-def scan_all_stocks(min_score=65, save_to_db=True, verbose=False, use_15m=False, use_hourly=False, use_4h=False, symbols_list=None, add_to_tracker=True):
+def scan_all_stocks(min_score=65, save_to_db=True, verbose=False, use_15m=False, use_hourly=False, use_4h=False, symbols_list=None, add_to_tracker=True, apply_spam_filter=True):
     if symbols_list is None:
         symbols_list = BIST_SYMBOLS
     
@@ -239,8 +296,16 @@ def scan_all_stocks(min_score=65, save_to_db=True, verbose=False, use_15m=False,
             continue
         
         signals.append(result)
-        
-        # Sadece günlük sinyalleri DB'ye kaydet
+    
+    signals.sort(key=lambda x: x['score'], reverse=True)
+    
+    # 🆕 AKILLI SPAM FİLTRESİ (Sadece günlük tarama için)
+    original_count = len(signals)
+    if apply_spam_filter and not use_hourly and not use_4h:
+        signals = apply_smart_spam_filter(signals, hours=4, min_score_improvement=10)
+    
+    # DB'ye kaydet + Takibe al (spam filtreden geçenler için)
+    for result in signals:
         if save_to_db and not use_hourly and not use_4h:
             save_signal(
                 symbol=result['symbol'],
@@ -267,17 +332,17 @@ def scan_all_stocks(min_score=65, save_to_db=True, verbose=False, use_15m=False,
                 if added_id:
                     tracker_added += 1
     
-    signals.sort(key=lambda x: x['score'], reverse=True)
-    
     print(f"\n{'='*60}")
     print(f"📊 TARAMA TAMAMLANDI - {timeframe}")
     print(f"{'='*60}")
-    print(f"✅ Güçlü Sinyal : {len(signals)}")
-    print(f"🚫 Filtrelendi  : {len(filtered_out)}")
-    print(f"⚪ Veri Yok    : {len(no_data)}")
-    print(f"📋 Toplam       : {len(symbols_list)}")
+    print(f"✅ Güçlü Sinyal   : {len(signals)}")
+    if apply_spam_filter and original_count != len(signals):
+        print(f"🔇 Spam filtrelendi: {original_count - len(signals)}")
+    print(f"🚫 Filtrelendi    : {len(filtered_out)}")
+    print(f"⚪ Veri Yok      : {len(no_data)}")
+    print(f"📋 Toplam         : {len(symbols_list)}")
     if add_to_tracker and not use_hourly and not use_4h:
-        print(f"🎯 Takibe alındı: {tracker_added}")
+        print(f"🎯 Takibe alındı  : {tracker_added}")
     print(f"{'='*60}\n")
     
     return signals
@@ -303,7 +368,8 @@ def scan_hourly_stocks(min_score=60, symbols_list=None):
         save_to_db=False,
         use_hourly=True,
         symbols_list=symbols_list,
-        add_to_tracker=False
+        add_to_tracker=False,
+        apply_spam_filter=False  # Saatlikte spam filtresi yok
     )
     
     for signal in hourly_signals:
@@ -320,11 +386,7 @@ def scan_hourly_stocks(min_score=60, symbols_list=None):
 # ════════════════════════════════════════════════════════════
 
 def scan_4h_stocks(min_score=65, symbols_list=None):
-    """
-    4 SAATLİK VERİDEN TARAMA
-    14:15'te çalışır - İlk 4H mum kapandıktan sonra
-    Tüm BIST hisselerini tarar
-    """
+    """4 SAATLİK VERİDEN TARAMA - 14:15'te çalışır"""
     if symbols_list is None:
         symbols_list = BIST_SYMBOLS
     
@@ -339,7 +401,8 @@ def scan_4h_stocks(min_score=65, symbols_list=None):
         save_to_db=False,
         use_4h=True,
         symbols_list=symbols_list,
-        add_to_tracker=False
+        add_to_tracker=False,
+        apply_spam_filter=False  # 4H'da spam filtresi yok
     )
     
     for signal in signals_4h:
@@ -352,7 +415,7 @@ def scan_4h_stocks(min_score=65, symbols_list=None):
 
 
 # ════════════════════════════════════════════════════════════
-# SPAM KORUMASI
+# ESKİ SPAM KORUMASI (backward compatibility için)
 # ════════════════════════════════════════════════════════════
 
 def is_recently_sent(symbol, hours=4):
@@ -386,12 +449,7 @@ def scan_and_notify(min_score=70, use_15m=False, max_signals=5, spam_hours=0):
     if not signals:
         return 0
     
-    new_signals = filter_new_signals(signals, hours=spam_hours)
-    
-    if not new_signals:
-        return 0
-    
-    sent = send_multiple_signals(new_signals, max_signals=max_signals)
+    sent = send_multiple_signals(signals, max_signals=max_signals)
     return sent
 
 
@@ -410,7 +468,10 @@ def print_top_signals(signals, top_n=10):
         tag = ""
         if s.get('is_4h'): tag = " 🕐4H"
         elif s.get('is_hourly'): tag = " ⚡GÜNİÇİ"
-        print(f"{i}. {s['emoji']} {s['symbol']:<10} {s['current_price']:.2f} TL  {s['score']}/100  ({tf}){tag}")
+        upgrade = ""
+        if s.get('spam_upgrade_reason'):
+            upgrade = f"  {s['spam_upgrade_reason']}"
+        print(f"{i}. {s['emoji']} {s['symbol']:<10} {s['current_price']:.2f} TL  {s['score']}/100  ({tf}){tag}{upgrade}")
 
 
 if __name__ == "__main__":
