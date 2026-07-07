@@ -1,6 +1,6 @@
 """
 Profesyonel Teknik Analiz Motoru
-EMA 5/22/50/200 + WaveTrend + SMI + Saatlik + 4H
+EMA 5/22/50/200 (Günlük) + EMA 5/22 (Saatlik) + EMA 5/22/50 (4H)
 """
 
 import pandas as pd
@@ -267,13 +267,17 @@ def detect_momentum_status(data, analysis):
 
 
 # ════════════════════════════════════════════════════════════
-# ANA ANALİZ FONKSİYONU
+# ANA ANALİZ FONKSİYONU - Zaman dilimi destekli
 # ════════════════════════════════════════════════════════════
 
-def analyze_stock(df):
+def analyze_stock(df, timeframe='daily'):
     """
     Tüm indikatörleri hesapla
-    EMA 5/22/50/200 sistemi + WaveTrend + SMI
+    
+    timeframe:
+    - 'daily' → EMA 5/22/50/200 (Golden Cross var)
+    - 'hourly' → EMA 5/22 (Hızlı, saatlik trade)
+    - '4h' → EMA 5/22/50 (Orta hız)
     """
     if len(df) < 20:
         return None
@@ -284,13 +288,24 @@ def analyze_stock(df):
     df['macd'], df['macd_signal'], df['macd_hist'] = calculate_macd(df)
     df['bb_upper'], df['bb_middle'], df['bb_lower'], df['bb_width'] = calculate_bollinger_bands(df)
     
-    # EMA 5/22/50/200 SİSTEMİ
+    # EMA - Zaman dilimine göre değişir
     df['ema_5'] = calculate_ema(df, 5)
     df['ema_22'] = calculate_ema(df, 22)
-    df['ema_50'] = calculate_ema(df, min(50, len(df)-1)) if len(df) > 50 else calculate_ema(df, max(5, len(df)//2))
-    df['ema_200'] = calculate_ema(df, min(200, len(df)-1)) if len(df) > 200 else pd.Series([None] * len(df))
     
-    # SMA 200 (referans için)
+    if timeframe == 'hourly':
+        # SAATLİK: Sadece EMA 5/22
+        df['ema_50'] = pd.Series([None] * len(df))
+        df['ema_200'] = pd.Series([None] * len(df))
+    elif timeframe == '4h':
+        # 4H: EMA 5/22/50
+        df['ema_50'] = calculate_ema(df, min(50, len(df)-1)) if len(df) > 50 else calculate_ema(df, max(5, len(df)//2))
+        df['ema_200'] = pd.Series([None] * len(df))
+    else:
+        # GÜNLÜK: EMA 5/22/50/200 (Golden Cross için hepsi)
+        df['ema_50'] = calculate_ema(df, min(50, len(df)-1)) if len(df) > 50 else calculate_ema(df, max(5, len(df)//2))
+        df['ema_200'] = calculate_ema(df, min(200, len(df)-1)) if len(df) > 200 else pd.Series([None] * len(df))
+    
+    # SMA 200 (referans)
     df['sma_200'] = calculate_sma(df, 200) if len(df) >= 200 else pd.Series([None] * len(df))
     
     df['atr'] = calculate_atr(df)
@@ -333,6 +348,7 @@ def analyze_stock(df):
         except: return None
 
     result = {
+        'timeframe': timeframe,  # YENİ: Zaman dilimi bilgisi
         'current_price': sf(last['close']), 'open': sf(last['open']),
         'high': sf(last['high']), 'low': sf(last['low']),
         'volume': sf(last['volume']), 'avg_volume_5': avg_volume_5,
@@ -344,7 +360,6 @@ def analyze_stock(df):
         'bb_upper': sf(last['bb_upper']), 'bb_middle': sf(last['bb_middle']),
         'bb_lower': sf(last['bb_lower']), 'bb_width': sf(last['bb_width']),
         
-        # EMA 5/22/50/200
         'ema_5': sf(last['ema_5']), 'ema_22': sf(last['ema_22']),
         'ema_50': sf(last['ema_50']), 'ema_200': sf(last['ema_200']),
         'sma_200': sf(last['sma_200']),
@@ -374,7 +389,7 @@ def analyze_stock(df):
 
 
 # ════════════════════════════════════════════════════════════
-# SAATLİK ANALİZ
+# SAATLİK ANALİZ (EMA 5/22)
 # ════════════════════════════════════════════════════════════
 
 def analyze_stock_hourly(symbol):
@@ -386,13 +401,13 @@ def analyze_stock_hourly(symbol):
         if not data or len(data) < 20:
             return None
         df = pd.DataFrame(data)
-        return analyze_stock(df)
+        return analyze_stock(df, timeframe='hourly')  # ← SAATLİK
     except:
         return None
 
 
 # ════════════════════════════════════════════════════════════
-# 4 SAATLİK ANALİZ
+# 4 SAATLİK ANALİZ (EMA 5/22/50)
 # ════════════════════════════════════════════════════════════
 
 def analyze_stock_4h(symbol):
@@ -404,10 +419,10 @@ def analyze_stock_4h(symbol):
         if not data or len(data) < 20:
             return None
         df = pd.DataFrame(data)
-        return analyze_stock(df)
+        return analyze_stock(df, timeframe='4h')  # ← 4H
     except:
         return None
 
 
 if __name__ == "__main__":
-    print("✅ Analyzer - EMA 5/22/50/200 + Golden Cross tespiti")
+    print("✅ Analyzer - Günlük: 5/22/50/200 | Saatlik: 5/22 | 4H: 5/22/50")
