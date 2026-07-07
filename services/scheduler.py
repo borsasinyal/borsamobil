@@ -1,6 +1,6 @@
 """
 Profesyonel Zamanlayıcı
-GÜNLÜK + SAATLİK + 4 SAATLİK tarama + Sinyal takip + Detaylı Gün Sonu + BIST 100 + PERFORMANS
+GÜNLÜK + SAATLİK (3 TEYİT, min 68) + 4 SAATLİK + BIST 100 + PERFORMANS
 """
 
 import sys
@@ -117,13 +117,17 @@ def job_full_scan():
         send_message(f"❌ <b>Hata</b>\n<code>{str(e)[:200]}</code>")
 
 
+# ════════════════════════════════════════════════════════════
+# SAATLİK TARAMA (Min skor 68 + 3 TEYİT)
+# ════════════════════════════════════════════════════════════
+
 def job_hourly_scan():
-    log_event("⚡ SAATLİK TARAMA")
+    log_event("⚡ SAATLİK TARAMA (3 TEYİT)")
     try:
         from telegram_bot.bot import send_hourly_signals
-        hourly_signals = scan_hourly_stocks(min_score=60, symbols_list=BIST_SYMBOLS[:200])
+        hourly_signals = scan_hourly_stocks(min_score=68, symbols_list=BIST_SYMBOLS[:200])
         if hourly_signals:
-            log_event(f"⚡ {len(hourly_signals)} saatlik sinyal")
+            log_event(f"⚡ {len(hourly_signals)} saatlik sinyal (3 teyit onaylı)")
             send_hourly_signals(hourly_signals, max_signals=3)
     except Exception as e:
         log_event(f"⚠️ Saatlik hata: {e}")
@@ -182,7 +186,7 @@ def analyze_bist100():
             'volume': hist['Volume'].values
         })
         
-        analysis = analyze_stock(df)
+        analysis = analyze_stock(df, timeframe='daily')
         if not analysis:
             return None
         
@@ -190,19 +194,19 @@ def analyze_bist100():
         prev_close = analysis.get('prev_close')
         daily_change = ((today_close - prev_close) / prev_close) * 100 if prev_close else 0
         
-        ema_9 = analysis.get('ema_9')
-        ema_21 = analysis.get('ema_21')
+        ema_5 = analysis.get('ema_5')
+        ema_22 = analysis.get('ema_22')
         ema_50 = analysis.get('ema_50')
         
         trend_status = "YATAY"; trend_emoji = "➡️"; trend_detail = ""
-        if ema_9 and ema_21 and ema_50:
-            if today_close > ema_9 > ema_21 > ema_50:
+        if ema_5 and ema_22 and ema_50:
+            if today_close > ema_5 > ema_22 > ema_50:
                 trend_status = "GÜÇLÜ BOĞA"; trend_emoji = "🚀"; trend_detail = "Tüm EMA'lar sıralı yukarı"
-            elif today_close > ema_21 and today_close > ema_50:
-                trend_status = "BOĞA"; trend_emoji = "📈"; trend_detail = "EMA21 ve EMA50 üzerinde"
+            elif today_close > ema_22 and today_close > ema_50:
+                trend_status = "BOĞA"; trend_emoji = "📈"; trend_detail = "EMA22 ve EMA50 üzerinde"
             elif today_close > ema_50:
                 trend_status = "POZİTİF"; trend_emoji = "✅"; trend_detail = "EMA50 üzerinde tutunuyor"
-            elif today_close < ema_9 < ema_21 < ema_50:
+            elif today_close < ema_5 < ema_22 < ema_50:
                 trend_status = "GÜÇLÜ AYI"; trend_emoji = "📉"; trend_detail = "Tüm EMA'lar sıralı aşağı"
             elif today_close < ema_50:
                 trend_status = "AYI"; trend_emoji = "🔴"; trend_detail = "EMA50 altında"
@@ -276,7 +280,7 @@ def analyze_bist100():
             'pivot': pivot, 'r1': r1, 'r2': r2, 'r3': r3,
             's1': s1, 's2': s2, 's3': s3,
             'yarin_beklenti': yarin_beklenti,
-            'ema_9': ema_9, 'ema_21': ema_21, 'ema_50': ema_50,
+            'ema_5': ema_5, 'ema_22': ema_22, 'ema_50': ema_50,
         }
     except Exception as e:
         log_event(f"❌ BIST 100 analiz hatası: {e}")
@@ -320,11 +324,11 @@ def format_bist100_analysis(bist):
     if bist['s2']: msg += f"🟢 <b>Destek 2:</b> {bist['s2']:.0f}\n"
     if bist['s3']: msg += f"🟢 <b>Destek 3:</b> {bist['s3']:.0f}\n\n"
     
-    if bist.get('ema_9') and bist.get('ema_21') and bist.get('ema_50'):
+    if bist.get('ema_5') and bist.get('ema_22') and bist.get('ema_50'):
         msg += "━━━━━━━━━━━━━━━━━━━━━━━\n📊 <b>EMA SEVİYELERİ</b>\n━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         price = bist['price']
-        msg += f"{'🟢' if price > bist['ema_9'] else '🔴'} EMA9  : <b>{bist['ema_9']:.0f}</b>\n"
-        msg += f"{'🟢' if price > bist['ema_21'] else '🔴'} EMA21 : <b>{bist['ema_21']:.0f}</b>\n"
+        msg += f"{'🟢' if price > bist['ema_5'] else '🔴'} EMA5  : <b>{bist['ema_5']:.0f}</b>\n"
+        msg += f"{'🟢' if price > bist['ema_22'] else '🔴'} EMA22 : <b>{bist['ema_22']:.0f}</b>\n"
         msg += f"{'🟢' if price > bist['ema_50'] else '🔴'} EMA50 : <b>{bist['ema_50']:.0f}</b>\n\n"
     
     if bist['yarin_beklenti']:
@@ -335,8 +339,10 @@ def format_bist100_analysis(bist):
     
     msg += "📊📊📊━━━━━━━━━━━━━━━━━📊📊📊\n\n"
     return msg
-    # ════════════════════════════════════════════════════════════
-# 🆕 PERFORMANS RAPORU FONKSİYONU
+
+
+# ════════════════════════════════════════════════════════════
+# PERFORMANS RAPORU
 # ════════════════════════════════════════════════════════════
 
 def format_performance_report():
@@ -349,7 +355,6 @@ def format_performance_report():
         msg += "     <b>BOT PERFORMANS RAPORU</b>\n"
         msg += "📈📈📈━━━━━━━━━━━━━━━━━📈📈📈\n\n"
         
-        # 1. BUGÜN VERİLEN SİNYALLER
         today_summary = get_today_signals_summary()
         today_details = get_today_signal_details()
         
@@ -362,7 +367,6 @@ def format_performance_report():
             msg += f"💯 Ort. skor: <b>{today_summary['avg_score']:.0f}</b>\n"
             msg += f"🏆 En yüksek: <b>{today_summary['max_score']}</b>\n\n"
             
-            # Bugünkü her sinyalin anlık durumu
             if today_details:
                 msg += "━━━━━━━━━━━━━━━━━━━━━━━\n"
                 msg += "📊 <b>BUGÜNKÜ SİNYALLERİN DURUMU</b>\n"
@@ -373,12 +377,11 @@ def format_performance_report():
                 total_pnl = 0
                 checked = 0
                 
-                for s in today_details[:10]:  # Max 10 göster
+                for s in today_details[:10]:
                     symbol = s['symbol']
                     entry_price = s['entry_price']
                     score = s['score']
                     
-                    # Anlık fiyat çek
                     current_price = None
                     try:
                         ticker = yf.Ticker(f"{symbol}.IS")
@@ -408,7 +411,6 @@ def format_performance_report():
                         msg += f"⚪ <b>{symbol}</b> ({score}/100)\n"
                         msg += f"   📥 {entry_price:.2f} → fiyat alınamadı\n\n"
                 
-                # Bugünkü özet
                 if checked > 0:
                     avg_pnl = total_pnl / checked
                     win_rate = (win_count / checked) * 100
@@ -424,14 +426,13 @@ def format_performance_report():
         else:
             msg += "📋 <i>Bugün sinyal verilmedi</i>\n\n"
         
-        # 2. AKTİF TAKİPTEKİ SİNYALLER
         active = get_active_signals()
         if active:
             msg += "━━━━━━━━━━━━━━━━━━━━━━━\n"
             msg += f"🎯 <b>AKTİF TAKİP ({len(active)} sinyal)</b>\n"
             msg += "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
             
-            for s in active[:5]:  # Max 5 göster
+            for s in active[:5]:
                 symbol = s['symbol']
                 entry = s['entry_price']
                 t1 = s['target_1']
@@ -461,7 +462,6 @@ def format_performance_report():
                 msg += f"\n<i>+{len(active)-5} sinyal daha aktif takipte</i>\n"
             msg += "\n"
         
-        # 3. HAFTALIK PERFORMANS
         perf = get_performance_summary(days=7)
         if perf and perf.get('total_closed', 0) > 0:
             msg += "━━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -505,7 +505,7 @@ def format_performance_report():
 
 
 # ════════════════════════════════════════════════════════════
-# GÜN SONU RAPORU (18:30) - BIST 100 + PERFORMANS + HİSSELER
+# GÜN SONU RAPORU
 # ════════════════════════════════════════════════════════════
 
 def job_end_of_day_report():
@@ -521,24 +521,17 @@ def job_end_of_day_report():
 ⏰ {tr_now().strftime('%H:%M - %d.%m.%Y')}
 📊 Analiz ediliyor...""")
         
-        # ═══════════════════════════════════════
         # MESAJ 1: BIST 100 ANALİZİ
-        # ═══════════════════════════════════════
         bist100 = analyze_bist100()
-        
         msg1 = f"🌆 <b>GÜN SONU RAPORU</b>\n━━━━━━━━━━━━━━━━━━━━━━━\n📅 {tr_now().strftime('%d.%m.%Y - %A')}\n\n"
         msg1 += format_bist100_analysis(bist100)
         send_message(msg1)
         
-        # ═══════════════════════════════════════
-        # MESAJ 2: PERFORMANS RAPORU (YENİ!)
-        # ═══════════════════════════════════════
+        # MESAJ 2: PERFORMANS RAPORU
         perf_msg = format_performance_report()
         send_message(perf_msg)
         
-        # ═══════════════════════════════════════
         # MESAJ 3: PİYASA + YARIN HİSSELER
-        # ═══════════════════════════════════════
         movers_data = []
         tomorrow_candidates = []
         
@@ -595,7 +588,7 @@ def job_end_of_day_report():
                     'volume': hist['Volume'].values
                 })
                 
-                analysis = analyze_stock(df)
+                analysis = analyze_stock(df, timeframe='daily')
                 if not analysis: continue
                 signal = generate_signal(candidate['full_symbol'], analysis, df)
                 if not signal: continue
