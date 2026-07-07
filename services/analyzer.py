@@ -1,6 +1,6 @@
 """
 Profesyonel Teknik Analiz Motoru
-WaveTrend + SMI + Saatlik + 4 Saatlik Analiz Desteği
+EMA 5/22/50/200 + WaveTrend + SMI + Saatlik + 4H
 """
 
 import pandas as pd
@@ -267,25 +267,32 @@ def detect_momentum_status(data, analysis):
 
 
 # ════════════════════════════════════════════════════════════
-# ANA ANALİZ FONKSİYONU (Günlük + Saatlik + 4H aynı mantık)
+# ANA ANALİZ FONKSİYONU
 # ════════════════════════════════════════════════════════════
 
 def analyze_stock(df):
-    """Tüm indikatörleri hesapla - Günlük, Saatlik, 4H veri için çalışır"""
+    """
+    Tüm indikatörleri hesapla
+    EMA 5/22/50/200 sistemi + WaveTrend + SMI
+    """
     if len(df) < 20:
         return None
 
     df = df.sort_values('date').reset_index(drop=True)
-
-    min_period = min(50, len(df))
     
     df['rsi'] = calculate_rsi(df)
     df['macd'], df['macd_signal'], df['macd_hist'] = calculate_macd(df)
     df['bb_upper'], df['bb_middle'], df['bb_lower'], df['bb_width'] = calculate_bollinger_bands(df)
-    df['ema_9'] = calculate_ema(df, 9)
-    df['ema_21'] = calculate_ema(df, 21)
+    
+    # EMA 5/22/50/200 SİSTEMİ
+    df['ema_5'] = calculate_ema(df, 5)
+    df['ema_22'] = calculate_ema(df, 22)
     df['ema_50'] = calculate_ema(df, min(50, len(df)-1)) if len(df) > 50 else calculate_ema(df, max(5, len(df)//2))
+    df['ema_200'] = calculate_ema(df, min(200, len(df)-1)) if len(df) > 200 else pd.Series([None] * len(df))
+    
+    # SMA 200 (referans için)
     df['sma_200'] = calculate_sma(df, 200) if len(df) >= 200 else pd.Series([None] * len(df))
+    
     df['atr'] = calculate_atr(df)
 
     try: df['wt1'], df['wt2'] = calculate_wavetrend(df)
@@ -336,10 +343,14 @@ def analyze_stock(df):
         'prev_macd_hist': sf(prev['macd_hist']),
         'bb_upper': sf(last['bb_upper']), 'bb_middle': sf(last['bb_middle']),
         'bb_lower': sf(last['bb_lower']), 'bb_width': sf(last['bb_width']),
-        'ema_9': sf(last['ema_9']), 'ema_21': sf(last['ema_21']),
-        'ema_50': sf(last['ema_50']), 'sma_200': sf(last['sma_200']),
-        'prev_ema_9': sf(prev['ema_9']), 'prev_ema_21': sf(prev['ema_21']),
-        'prev_ema_50': sf(prev['ema_50']),
+        
+        # EMA 5/22/50/200
+        'ema_5': sf(last['ema_5']), 'ema_22': sf(last['ema_22']),
+        'ema_50': sf(last['ema_50']), 'ema_200': sf(last['ema_200']),
+        'sma_200': sf(last['sma_200']),
+        'prev_ema_5': sf(prev['ema_5']), 'prev_ema_22': sf(prev['ema_22']),
+        'prev_ema_50': sf(prev['ema_50']), 'prev_ema_200': sf(prev['ema_200']),
+        
         'wt1': sf(last['wt1']), 'wt2': sf(last['wt2']),
         'prev_wt1': sf(prev['wt1']), 'prev_wt2': sf(prev['wt2']),
         'smi': sf(last['smi']), 'smi_signal': sf(last['smi_signal']),
@@ -367,7 +378,6 @@ def analyze_stock(df):
 # ════════════════════════════════════════════════════════════
 
 def analyze_stock_hourly(symbol):
-    """SAATLİK veriden analiz yap"""
     try:
         from services.tradingview_fetcher import fetch_stock_tv, TV_AVAILABLE
         if not TV_AVAILABLE:
@@ -386,7 +396,6 @@ def analyze_stock_hourly(symbol):
 # ════════════════════════════════════════════════════════════
 
 def analyze_stock_4h(symbol):
-    """4 SAATLİK veriden analiz yap - 14:15 taraması için"""
     try:
         from services.tradingview_fetcher import fetch_stock_tv, TV_AVAILABLE
         if not TV_AVAILABLE:
@@ -401,4 +410,4 @@ def analyze_stock_4h(symbol):
 
 
 if __name__ == "__main__":
-    print("✅ Analyzer - Günlük + Saatlik + 4H analiz desteği")
+    print("✅ Analyzer - EMA 5/22/50/200 + Golden Cross tespiti")
