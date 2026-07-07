@@ -1,6 +1,6 @@
 """
 Telegram Bot - SWING + SAATLİK + 4 SAATLİK + Tavan Adayı
-Sıkılaştırılmış tavan tespiti + Giriş uyarısı + 4H Premium Kart
++ AL PENCERESİ UYARISI (Fiyat sapma kontrolü)
 """
 
 import sys
@@ -39,6 +39,196 @@ def get_bot():
     if not TELEGRAM_BOT_TOKEN: raise ValueError("TOKEN boş!")
     if not TELEGRAM_CHAT_ID: raise ValueError("CHAT_ID boş!")
     return Bot(token=TELEGRAM_BOT_TOKEN)
+
+
+# ════════════════════════════════════════════════════════════
+# 🆕 AL PENCERESİ KONTROLÜ (FIYAT SAPMA)
+# ════════════════════════════════════════════════════════════
+
+def check_entry_window(symbol, signal_price):
+    """
+    Sinyal fiyatı ile şu anki fiyatı karşılaştır
+    
+    Returns:
+        dict: {
+            'status': 'valid' / 'check' / 'missed',
+            'emoji': '🟢' / '🟡' / '🔴',
+            'title': 'HALA GEÇERLİ' / 'KONTROL ET' / 'KAÇTI',
+            'current_price': float,
+            'change_pct': float,
+            'message': str
+        }
+    """
+    try:
+        # Önce TradingView'dan dene
+        current_price = None
+        
+        try:
+            from services.tradingview_fetcher import get_current_price_tv, TV_AVAILABLE
+            if TV_AVAILABLE:
+                current_price = get_current_price_tv(symbol)
+        except:
+            pass
+        
+        # TV başarısızsa Yahoo'ya düş
+        if not current_price:
+            try:
+                import yfinance as yf
+                ticker_symbol = f"{symbol}.IS" if not symbol.endswith('.IS') else symbol
+                ticker = yf.Ticker(ticker_symbol)
+                info = ticker.history(period="1d")
+                if not info.empty:
+                    current_price = float(info['Close'].iloc[-1])
+            except:
+                pass
+        
+        # Fiyat alınamadıysa
+        if not current_price or current_price <= 0:
+            return {
+                'status': 'unknown',
+                'emoji': '⚪',
+                'title': 'FİYAT ALINAMADI',
+                'current_price': signal_price,
+                'change_pct': 0,
+                'message': 'Anlık fiyat kontrol edilemedi'
+            }
+        
+        # Değişim yüzdesi
+        change_pct = ((current_price - signal_price) / signal_price) * 100
+        abs_change = abs(change_pct)
+        
+        # Durum belirleme
+        if abs_change < 1:
+            return {
+                'status': 'valid',
+                'emoji': '🟢',
+                'title': 'HALA GEÇERLİ',
+                'current_price': current_price,
+                'change_pct': change_pct,
+                'message': 'Fiyat sinyal bölgesinde, giriş uygun'
+            }
+        elif change_pct >= 2:
+            return {
+                'status': 'missed',
+                'emoji': '🔴',
+                'title': 'KAÇTI - GİRME!',
+                'current_price': current_price,
+                'change_pct': change_pct,
+                'message': f'Fiyat %{change_pct:.2f} yukarı kaçmış, girişte peşin zarar!'
+            }
+        elif change_pct >= 1:
+            return {
+                'status': 'check',
+                'emoji': '🟡',
+                'title': 'KONTROL ET',
+                'current_price': current_price,
+                'change_pct': change_pct,
+                'message': f'Fiyat %{change_pct:.2f} sapmış, dikkatli gir'
+            }
+        elif change_pct <= -2:
+            # Fiyat DÜŞMÜŞ - Daha iyi giriş fırsatı!
+            return {
+                'status': 'better',
+                'emoji': '🟢',
+                'title': 'DAHA İYİ FİYAT!',
+                'current_price': current_price,
+                'change_pct': change_pct,
+                'message': f'Fiyat %{abs(change_pct):.2f} DÜŞMÜŞ - Fırsat!'
+            }
+        elif change_pct <= -1:
+            return {
+                'status': 'valid',
+                'emoji': '🟢',
+                'title': 'HALA GEÇERLİ',
+                'current_price': current_price,
+                'change_pct': change_pct,
+                'message': 'Fiyat hafif düşmüş, giriş uygun'
+            }
+        else:
+            return {
+                'status': 'valid',
+                'emoji': '🟢',
+                'title': 'HALA GEÇERLİ',
+                'current_price': current_price,
+                'change_pct': change_pct,
+                'message': 'Fiyat sinyal bölgesinde'
+            }
+    except Exception as e:
+        print(f"⚠️ Entry window hatası ({symbol}): {e}")
+        return {
+            'status': 'unknown',
+            'emoji': '⚪',
+            'title': 'KONTROL EDİLEMEDİ',
+            'current_price': signal_price,
+            'change_pct': 0,
+            'message': 'Kontrol yapılamadı'
+        }
+
+
+def format_entry_window_box(entry_check):
+    """AL PENCERESİ kutusunu formatla"""
+    if not entry_check:
+        return ""
+    
+    status = entry_check['status']
+    emoji = entry_check['emoji']
+    title = entry_check['title']
+    current = entry_check['current_price']
+    change = entry_check['change_pct']
+    message = entry_check['message']
+    
+    if status == 'valid':
+        box = f"""
+{emoji}{emoji}{emoji}━━━━━━━━━━━━━━━━━{emoji}{emoji}{emoji}
+   ✅ <b>{title}</b>
+{emoji}{emoji}{emoji}━━━━━━━━━━━━━━━━━{emoji}{emoji}{emoji}
+💰 Anlık fiyat: <b>{current:.2f} TL</b>
+📊 Sapma: <b>{change:+.2f}%</b>
+💡 <i>{message}</i>
+
+"""
+    elif status == 'better':
+        box = f"""
+{emoji}{emoji}{emoji}━━━━━━━━━━━━━━━━━{emoji}{emoji}{emoji}
+   🎁 <b>{title}</b>
+{emoji}{emoji}{emoji}━━━━━━━━━━━━━━━━━{emoji}{emoji}{emoji}
+💰 Anlık fiyat: <b>{current:.2f} TL</b>
+📊 Sapma: <b>{change:+.2f}%</b> (daha ucuz!)
+💡 <i>{message}</i>
+
+"""
+    elif status == 'check':
+        box = f"""
+{emoji}{emoji}{emoji}━━━━━━━━━━━━━━━━━{emoji}{emoji}{emoji}
+   ⚠️ <b>{title}</b>
+{emoji}{emoji}{emoji}━━━━━━━━━━━━━━━━━{emoji}{emoji}{emoji}
+💰 Anlık fiyat: <b>{current:.2f} TL</b>
+📊 Sapma: <b>+%{change:.2f}</b>
+💡 <i>{message}</i>
+⚠️ <b>Küçük pozisyon aç!</b>
+
+"""
+    elif status == 'missed':
+        box = f"""
+{emoji}{emoji}{emoji}━━━━━━━━━━━━━━━━━{emoji}{emoji}{emoji}
+   🚫 <b>{title}</b>
+{emoji}{emoji}{emoji}━━━━━━━━━━━━━━━━━{emoji}{emoji}{emoji}
+💰 Anlık fiyat: <b>{current:.2f} TL</b>
+📊 Sapma: <b>+%{change:.2f}</b>
+🔴 <i>{message}</i>
+🛑 <b>GİRME! Bir sonraki fırsatı bekle</b>
+
+"""
+    else:  # unknown
+        box = f"""
+⚪⚪⚪━━━━━━━━━━━━━━━━━⚪⚪⚪
+   ℹ️ <b>{title}</b>
+⚪⚪⚪━━━━━━━━━━━━━━━━━⚪⚪⚪
+💡 <i>{message}</i>
+
+"""
+    
+    return box
 
 
 # ════════════════════════════════════════════════════════════
@@ -113,7 +303,7 @@ def format_summary_card(signals, max_signals=5):
 
 
 # ════════════════════════════════════════════════════════════
-# SWING SİNYAL KARTI (Renkli çerçeve + Giriş uyarısı)
+# SWING SİNYAL KARTI (+ AL PENCERESİ)
 # ════════════════════════════════════════════════════════════
 
 def format_signal_for_telegram(signal, signal_index=1):
@@ -141,6 +331,10 @@ def format_signal_for_telegram(signal, signal_index=1):
     
     tavan = is_tavan_adayi(signal)
     
+    # 🆕 AL PENCERESİ KONTROLÜ
+    entry_check = check_entry_window(signal['symbol'], price)
+    entry_box = format_entry_window_box(entry_check)
+    
     if tavan:
         color = "🔴"; se = "⚡"; te = " - ⚡ TAVAN ADAYI!"
     else:
@@ -159,8 +353,11 @@ def format_signal_for_telegram(signal, signal_index=1):
         msg += f"     {medal} <b>SİNYAL #{signal_index}</b>\n"
         msg += f"{color}{color}{color}{color}{color}{color}{color}{color}{color}{color}{color}{color}\n\n"
     
+    # 🆕 AL PENCERESİ EN ÜSTTE
+    msg += entry_box
+    
     msg += f"{emoji} <b>{label}</b>\n━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-    msg += f"📌 <b>{symbol}</b>{'⚡' if tavan else ''}\n💰 Fiyat: <b>{price:.2f} TL</b>\n⏰ {tr_now().strftime('%H:%M - %d.%m.%Y')}\n\n"
+    msg += f"📌 <b>{symbol}</b>{'⚡' if tavan else ''}\n💰 Sinyal Fiyatı: <b>{price:.2f} TL</b>\n⏰ {tr_now().strftime('%H:%M - %d.%m.%Y')}\n\n"
     
     msg += f"💯 <b>SKOR: {score}/100</b>\n<code>{score_bar}</code>\n{stars}\n📊 <i>{confidence}</i>\n🎯 <b>{action}</b>\n\n"
     
@@ -174,7 +371,16 @@ def format_signal_for_telegram(signal, signal_index=1):
     
     msg += "━━━━━━━━━━━━━━━━━━━━━━━\n💼 <b>İŞLEM PLANI - 3 HEDEF</b>\n━━━━━━━━━━━━━━━━━━━━━━━\n\n"
     msg += f"📥 <b>GİRİŞ:</b> {t['entry']:.2f} TL\n"
-    msg += f"   ⚠️ <i>Fiyat bundan %2+ yukarıdaysa GİRME!</i>\n\n"
+    
+    # 🆕 AL PENCERESİ DURUMUNA GÖRE UYARI
+    if entry_check['status'] == 'missed':
+        msg += f"   🔴 <b>KAÇTI!</b> Şuan {entry_check['current_price']:.2f} TL\n\n"
+    elif entry_check['status'] == 'check':
+        msg += f"   🟡 <b>Sapma:</b> Şuan {entry_check['current_price']:.2f} TL\n\n"
+    elif entry_check['status'] == 'better':
+        msg += f"   🎁 <b>Daha iyi:</b> Şuan {entry_check['current_price']:.2f} TL\n\n"
+    else:
+        msg += f"   ⚠️ <i>Fiyat bundan %2+ yukarıdaysa GİRME!</i>\n\n"
     
     h1 = "1-2 gün" if score >= 85 else "2-3 gün" if score >= 75 else "2-4 gün"
     h2 = "2-3 gün" if score >= 85 else "3-4 gün" if score >= 75 else "3-5 gün"
@@ -231,7 +437,7 @@ def format_signal_for_telegram(signal, signal_index=1):
 
 
 # ════════════════════════════════════════════════════════════
-# SAATLİK SİNYAL KARTI
+# SAATLİK SİNYAL KARTI (+ AL PENCERESİ)
 # ════════════════════════════════════════════════════════════
 
 def format_hourly_signal(signal, signal_index=1):
@@ -254,10 +460,17 @@ def format_hourly_signal(signal, signal_index=1):
     
     ind = signal.get('indicators',{})
     
+    # 🆕 AL PENCERESİ
+    entry_check = check_entry_window(signal.get('symbol'), price)
+    entry_box = format_entry_window_box(entry_check)
+    
     msg = "⚡⚡⚡━━━━━━━━━━━━━━━━━⚡⚡⚡\n"
     msg += f"  🕐 <b>SAATLİK SİNYAL #{signal_index}</b>\n"
     msg += f"  <b>BUGÜN TRADE EDİLEBİLİR!</b>\n"
     msg += "⚡⚡⚡━━━━━━━━━━━━━━━━━⚡⚡⚡\n\n"
+    
+    # 🆕 AL PENCERESİ
+    msg += entry_box
     
     msg += f"📌 <b>{symbol}</b> ⚡\n💰 <b>{price:.2f} TL</b>\n⏰ {tr_now().strftime('%H:%M - %d.%m.%Y')}\n\n"
     msg += f"💯 <b>SAATLİK SKOR: {score}/100</b>\n<code>{score_bar}</code>\n{stars}\n🎯 <b>{action}</b>\n\n"
@@ -276,7 +489,14 @@ def format_hourly_signal(signal, signal_index=1):
     
     msg += "━━━━━━━━━━━━━━━━━━━━━━━\n🎯 <b>GÜN İÇİ PLAN</b>\n━━━━━━━━━━━━━━━━━━━━━━━\n\n"
     msg += f"📥 <b>GİRİŞ:</b> {entry:.2f} TL\n"
-    msg += f"   ⚠️ <i>Fiyat bundan %2+ yukarıdaysa GİRME!</i>\n"
+    
+    if entry_check['status'] == 'missed':
+        msg += f"   🔴 <b>KAÇTI!</b> Şuan {entry_check['current_price']:.2f} TL\n"
+    elif entry_check['status'] == 'check':
+        msg += f"   🟡 <b>Kontrol et:</b> Şuan {entry_check['current_price']:.2f} TL\n"
+    else:
+        msg += f"   ⚠️ <i>Fiyat bundan %2+ yukarıdaysa GİRME!</i>\n"
+    
     msg += f"🎯 <b>HEDEF:</b> {target:.2f} TL (<b>+{target_pct}%</b>)\n"
     msg += f"🛑 <b>STOP:</b> {stop:.2f} TL (<b>-{stop_pct}%</b>)\n\n"
     
@@ -288,14 +508,11 @@ def format_hourly_signal(signal, signal_index=1):
 
 
 # ════════════════════════════════════════════════════════════
-# 4 SAATLİK SİNYAL KARTI - PREMİUM TASARIM
+# 4 SAATLİK SİNYAL KARTI (+ AL PENCERESİ)
 # ════════════════════════════════════════════════════════════
 
 def format_4h_signal(signal, signal_index=1):
-    """
-    4 SAATLİK PREMİUM SİNYAL KARTI
-    Mor/mavi tema - Detaylı analiz - 3 hedefli plan
-    """
+    """4 SAATLİK PREMİUM SİNYAL KARTI"""
     if not signal: return None
     
     t = signal.get('targets', {})
@@ -316,27 +533,31 @@ def format_4h_signal(signal, signal_index=1):
     
     medal = get_medal_emoji(signal_index)
     
+    # 🆕 AL PENCERESİ
+    entry_check = check_entry_window(signal.get('symbol'), price)
+    entry_box = format_entry_window_box(entry_check)
+    
     # PREMİUM MOR ÇERÇEVE
     msg = "🟣🔵🟣🔵━━━━━━━━━━━━━🔵🟣🔵🟣\n"
     msg += f"  🕐 {medal} <b>4 SAATLİK SİNYAL #{signal_index}</b>\n"
     msg += f"  📊 <b>İLK 4H MUM ANALİZİ</b>\n"
     msg += "🟣🔵🟣🔵━━━━━━━━━━━━━🔵🟣🔵🟣\n\n"
     
-    # BAŞLIK
+    # 🆕 AL PENCERESİ
+    msg += entry_box
+    
     msg += f"{emoji} <b>{label}</b>\n━━━━━━━━━━━━━━━━━━━━━━━\n\n"
     msg += f"📌 <b>{symbol}</b> 🕐\n"
-    msg += f"💰 Fiyat: <b>{price:.2f} TL</b>\n"
+    msg += f"💰 Sinyal Fiyatı: <b>{price:.2f} TL</b>\n"
     msg += f"⏰ {tr_now().strftime('%H:%M - %d.%m.%Y')}\n"
     msg += f"📊 Zaman dilimi: <b>4 Saatlik Mum</b>\n\n"
     
-    # SKOR
     msg += f"💯 <b>4H SKOR: {score}/100</b>\n"
     msg += f"<code>{score_bar}</code>\n"
     msg += f"{stars}\n"
     msg += f"📊 <i>{confidence}</i>\n"
     msg += f"🎯 <b>{action}</b>\n\n"
     
-    # 4H ANALİZ DETAYI
     msg += "🟣━━━━━━━━━━━━━━━━━━━━━🟣\n"
     msg += "📊 <b>4H TEKNİK ANALİZ</b>\n"
     msg += "🟣━━━━━━━━━━━━━━━━━━━━━🟣\n\n"
@@ -385,7 +606,6 @@ def format_4h_signal(signal, signal_index=1):
     
     msg += "\n"
     
-    # STRATEJİ
     if holding and holding.get('strategy') and holding.get('strategy') != 'YOK':
         msg += "🔵━━━━━━━━━━━━━━━━━━━━━🔵\n"
         msg += "📋 <b>STRATEJİ</b>\n"
@@ -398,13 +618,20 @@ def format_4h_signal(signal, signal_index=1):
             msg += f"💡 <i>{escape_html(holding['reason'])}</i>\n"
         msg += "\n"
     
-    # İŞLEM PLANI - 3 HEDEF
     msg += "🟣━━━━━━━━━━━━━━━━━━━━━🟣\n"
     msg += "💼 <b>İŞLEM PLANI - 3 HEDEF</b>\n"
     msg += "🟣━━━━━━━━━━━━━━━━━━━━━🟣\n\n"
     
     msg += f"📥 <b>GİRİŞ:</b> {t['entry']:.2f} TL\n"
-    msg += f"   ⚠️ <i>Fiyat bundan %2+ yukarıdaysa GİRME!</i>\n\n"
+    
+    if entry_check['status'] == 'missed':
+        msg += f"   🔴 <b>KAÇTI!</b> Şuan {entry_check['current_price']:.2f} TL\n\n"
+    elif entry_check['status'] == 'check':
+        msg += f"   🟡 <b>Kontrol et:</b> Şuan {entry_check['current_price']:.2f} TL\n\n"
+    elif entry_check['status'] == 'better':
+        msg += f"   🎁 <b>Daha iyi:</b> Şuan {entry_check['current_price']:.2f} TL\n\n"
+    else:
+        msg += f"   ⚠️ <i>Fiyat bundan %2+ yukarıdaysa GİRME!</i>\n\n"
     
     h1 = "1-2 gün" if score >= 85 else "2-3 gün" if score >= 75 else "2-4 gün"
     h2 = "2-3 gün" if score >= 85 else "3-5 gün" if score >= 75 else "3-7 gün"
@@ -422,7 +649,6 @@ def format_4h_signal(signal, signal_index=1):
     msg += f"🛑 <b>STOP:</b> {t['stop_loss']:.2f} TL <b>(-{t['stop_pct']}%)</b>\n"
     msg += f"⚖️ <b>Risk/Ödül:</b> 1/{t['risk_reward']}\n\n"
     
-    # SEBEPLER
     if signal.get('reasons'):
         msg += "🔵━━━━━━━━━━━━━━━━━━━━━🔵\n"
         msg += f"✅ <b>SEBEPLER ({len(signal['reasons'])})</b>\n"
@@ -431,7 +657,6 @@ def format_4h_signal(signal, signal_index=1):
             msg += f"{r.get('icon', '✅')} <b>{escape_html(r.get('title', ''))}</b>\n"
             msg += f"   → <i>{escape_html(r.get('meaning', ''))}</i>\n\n"
     
-    # UYARILAR
     if signal.get('warnings'):
         msg += "⚠️━━━━━━━━━━━━━━━━━━━━━⚠️\n"
         msg += "<b>⚠️ UYARILAR</b>\n"
@@ -440,7 +665,6 @@ def format_4h_signal(signal, signal_index=1):
             msg += f"{w.get('icon', '⚠️')} <b>{escape_html(w.get('title', ''))}</b>\n"
             msg += f"   💡 <b>{escape_html(w.get('action', ''))}</b>\n\n"
     
-    # PUAN DAĞILIMI
     b = signal.get('breakdown', {})
     if b:
         msg += "🟣━━━━━━━━━━━━━━━━━━━━━🟣\n"
@@ -454,7 +678,6 @@ def format_4h_signal(signal, signal_index=1):
         msg += f"🚀 Kırılım   : <b>{b.get('breakout_candle',{}).get('score',0)}/{b.get('breakout_candle',{}).get('max',5)}</b>\n"
         msg += f"💧 Likidite  : <b>{b.get('liquidity',{}).get('score',0)}/{b.get('liquidity',{}).get('max',5)}</b>\n\n"
     
-    # SEVİYELER
     kl = signal.get('key_levels', {})
     if any([kl.get('pivot'), kl.get('r1'), kl.get('ema_50')]):
         msg += "📍━━━━━━━━━━━━━━━━━━━━━📍\n"
@@ -470,7 +693,6 @@ def format_4h_signal(signal, signal_index=1):
         if kl.get('ema_50'): msg += f"📊 EMA50 : <b>{kl['ema_50']:.2f}</b>\n"
         msg += "\n"
     
-    # 4H AVANTAJI
     msg += "🟣━━━━━━━━━━━━━━━━━━━━━🟣\n"
     msg += "💎 <b>NEDEN 4 SAATLİK?</b>\n"
     msg += "🟣━━━━━━━━━━━━━━━━━━━━━🟣\n\n"
@@ -479,7 +701,6 @@ def format_4h_signal(signal, signal_index=1):
     msg += "✅ Sahte sinyal riski düşük\n"
     msg += "✅ Swing giriş zamanlaması ideal\n\n"
     
-    # ALT ÇERÇEVE
     msg += "🟣🔵━━━━━━━━━━━━━━━━━🔵🟣\n"
     if holding and holding.get('strategy') and holding.get('strategy') != 'YOK':
         msg += f"🕐 <i>4H ANALİZ • {escape_html(holding.get('strategy', 'SWING'))} • {escape_html(holding.get('duration', '2-5 gün'))}</i>\n"
@@ -496,7 +717,6 @@ def format_4h_signal(signal, signal_index=1):
 # ════════════════════════════════════════════════════════════
 
 def format_4h_summary_card(signals, max_signals=5):
-    """4 SAATLİK sinyaller için özet kart"""
     if not signals: return None
     top = signals[:max_signals]
     
@@ -589,21 +809,14 @@ def send_hourly_signals(signals, max_signals=3):
     except: return 0
 
 
-# ════════════════════════════════════════════════════════════
-# 4H SİNYAL GÖNDERME
-# ════════════════════════════════════════════════════════════
-
 async def send_4h_signals_async(signals, max_signals=5):
-    """4 SAATLİK sinyalleri gönder - Özet + Detaylı kartlar"""
     if not signals: return 0
     
-    # Özet kart
     summary = format_4h_summary_card(signals, max_signals)
     if summary:
         await send_message_async(summary)
         await asyncio.sleep(2)
     
-    # Detaylı kartlar
     sent = 0
     for i, s in enumerate(signals[:max_signals], 1):
         msg = format_4h_signal(s, signal_index=i)
@@ -614,7 +827,6 @@ async def send_4h_signals_async(signals, max_signals=5):
     return sent
 
 def send_4h_signals(signals, max_signals=5):
-    """4H sinyallerini gönder"""
     try: return asyncio.run(send_4h_signals_async(signals, max_signals))
     except: return 0
 
@@ -650,7 +862,7 @@ def send_momentum_warning(symbol, current_price, entry_price, reason):
 # ════════════════════════════════════════════════════════════
 
 async def send_test_message_async():
-    msg = f"🎉 <b>BOT AKTİF</b>\n━━━━━━━━━━━━━━━━━━━━━━━\n✅ SWING + SAATLİK + 4H sinyaller\n⚡ Tavan adayı tespiti (sıkılaştırılmış)\n🕐 4 Saatlik premium analiz\n📊 Giriş noktası uyarısı\n⏰ {tr_now().strftime('%H:%M - %d.%m.%Y')}"
+    msg = f"🎉 <b>BOT AKTİF</b>\n━━━━━━━━━━━━━━━━━━━━━━━\n✅ SWING + SAATLİK + 4H sinyaller\n⚡ Tavan adayı tespiti\n🎯 AL PENCERESİ uyarısı\n🕐 4 Saatlik premium analiz\n⏰ {tr_now().strftime('%H:%M - %d.%m.%Y')}"
     return await send_message_async(msg)
 
 def send_test_message():
