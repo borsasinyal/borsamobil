@@ -6,7 +6,6 @@ GÖREVİ:
 - Her saat çalışır
 - Aktif sinyallerin fiyatlarını kontrol eder
 - Hedef vurduysa "HEDEF VURDU!" bildirimi
-- Stop yaklaştıysa "DİKKAT!" uyarısı
 - Stop olduysa pozisyonu kapatır
 """
 
@@ -21,14 +20,12 @@ from database import (
     get_active_signals,
     update_target_hit,
     update_near_target_alerted,
-    update_near_stop_alerted,
     close_active_signal,
     get_signal_stats
 )
 from telegram_bot.bot import (
     send_message,
     send_target_hit_alert,
-    send_stop_warning,
     escape_html
 )
 
@@ -40,7 +37,6 @@ from telegram_bot.bot import (
 TR_TIMEZONE = timezone(timedelta(hours=3))
 
 def tr_now():
-    """Türkiye saatini döndür (UTC+3)"""
     return datetime.now(TR_TIMEZONE)
 
 
@@ -49,26 +45,12 @@ def tr_now():
 # ════════════════════════════════════════════════════════════
 
 def get_current_price(symbol):
-    """
-    Yahoo Finance'den güncel fiyat al
-    
-    Args:
-        symbol: 'AKBNK' (sadece sembol, .IS olmadan)
-    
-    Returns:
-        float: Güncel fiyat veya None
-    """
     try:
         ticker_symbol = f"{symbol}.IS"
         ticker = yf.Ticker(ticker_symbol)
-        
-        # Son 1 günlük veri al
         info = ticker.history(period="1d")
-        
         if info.empty:
             return None
-        
-        # Son kapanış fiyatı
         return float(info['Close'].iloc[-1])
     except Exception as e:
         print(f"❌ {symbol} fiyat alma hatası: {e}")
@@ -76,7 +58,7 @@ def get_current_price(symbol):
 
 
 # ════════════════════════════════════════════════════════════
-# YAKLAŞMA UYARILARI - YARDIMCI MESAJLAR
+# YARDIMCI MESAJLAR
 # ════════════════════════════════════════════════════════════
 
 def send_near_target_alert(symbol, target_num, entry_price, target_price, current_price):
@@ -186,7 +168,6 @@ def check_active_signals():
     """
     print(f"\n[{tr_now().strftime('%Y-%m-%d %H:%M:%S')}] 🔍 SİNYAL TAKİP BAŞLADI")
     
-    # Aktif sinyalleri al
     active_signals = get_active_signals()
     
     if not active_signals:
@@ -208,7 +189,6 @@ def check_active_signals():
         target_3 = signal['target_3']
         stop_loss = signal['stop_loss']
         
-        # Güncel fiyatı al
         current_price = get_current_price(symbol)
         
         if not current_price:
@@ -228,25 +208,12 @@ def check_active_signals():
             continue
         
         # ═══════════════════════════════════════
-        # 2. STOP YAKLAŞMA KONTROLÜ
-        # ═══════════════════════════════════════
-        stop_distance_pct = ((current_price - stop_loss) / current_price) * 100
-        
-        if stop_distance_pct < 1.5 and not signal['near_stop_alerted']:
-            print(f"   ⚠️ STOP'A YAKIN ({stop_distance_pct:.2f}%)")
-            send_stop_warning(symbol, entry_price, current_price, stop_loss)
-            update_near_stop_alerted(signal_id)
-            near_alert_count += 1
-            continue
-        
-        # ═══════════════════════════════════════
-        # 3. HEDEF 3 KONTROLÜ (Tam kar)
+        # 2. HEDEF 3 KONTROLÜ (Tam kar)
         # ═══════════════════════════════════════
         if not signal['target_3_hit'] and current_price >= target_3:
             print(f"   🎯 HEDEF 3 VURDU!")
             update_target_hit(signal_id, 3)
             
-            # Tüm hedefler vuruldu - tebrik mesajı + kapatma
             created_at = signal['created_at']
             try:
                 created_dt = datetime.strptime(created_at, '%Y-%m-%d %H:%M:%S')
@@ -260,7 +227,7 @@ def check_active_signals():
             continue
         
         # ═══════════════════════════════════════
-        # 4. HEDEF 2 KONTROLÜ
+        # 3. HEDEF 2 KONTROLÜ
         # ═══════════════════════════════════════
         if not signal['target_2_hit'] and current_price >= target_2:
             print(f"   🎯 HEDEF 2 VURDU!")
@@ -270,7 +237,7 @@ def check_active_signals():
             continue
         
         # ═══════════════════════════════════════
-        # 5. HEDEF 1 KONTROLÜ
+        # 4. HEDEF 1 KONTROLÜ
         # ═══════════════════════════════════════
         if not signal['target_1_hit'] and current_price >= target_1:
             print(f"   🎯 HEDEF 1 VURDU!")
@@ -280,7 +247,7 @@ def check_active_signals():
             continue
         
         # ═══════════════════════════════════════
-        # 6. HEDEF YAKLAŞMA KONTROLÜ
+        # 5. HEDEF YAKLAŞMA KONTROLÜ
         # ═══════════════════════════════════════
         
         # Hedef 1 yaklaşma (%80 mesafede)
@@ -288,7 +255,7 @@ def check_active_signals():
             target_1_distance_pct = ((target_1 - current_price) / current_price) * 100
             target_1_total_pct = ((target_1 - entry_price) / entry_price) * 100
             
-            if target_1_distance_pct < (target_1_total_pct * 0.2):  # %80 yakın
+            if target_1_total_pct > 0 and target_1_distance_pct < (target_1_total_pct * 0.2):
                 print(f"   📈 HEDEF 1 YAKLAŞIYOR")
                 send_near_target_alert(symbol, 1, entry_price, target_1, current_price)
                 update_near_target_alerted(signal_id, 1)
@@ -302,7 +269,7 @@ def check_active_signals():
             
             target_2_distance_pct = ((target_2 - current_price) / current_price) * 100
             
-            if target_2_distance_pct < 1.0:  # %1'den yakın
+            if target_2_distance_pct < 1.0:
                 print(f"   📈 HEDEF 2 YAKLAŞIYOR")
                 send_near_target_alert(symbol, 2, entry_price, target_2, current_price)
                 update_near_target_alerted(signal_id, 2)
@@ -312,7 +279,7 @@ def check_active_signals():
     # Özet
     print(f"\n📊 TAKİP TAMAMLANDI:")
     print(f"   🎯 Hedef vurma: {target_hit_count}")
-    print(f"   ⚠️ Yaklaşma uyarısı: {near_alert_count}")
+    print(f"   📈 Yaklaşma uyarısı: {near_alert_count}")
     print(f"   🛑 Stop: {stop_count}")
     
     return target_hit_count + near_alert_count + stop_count
@@ -323,10 +290,7 @@ def check_active_signals():
 # ════════════════════════════════════════════════════════════
 
 def send_portfolio_summary():
-    """
-    Aktif pozisyonların özet raporunu gönder
-    Günde 2-3 kez çağrılabilir (öğlen + gün sonu)
-    """
+    """Aktif pozisyonların özet raporunu gönder"""
     active_signals = get_active_signals()
     
     if not active_signals:
@@ -339,13 +303,12 @@ def send_portfolio_summary():
 
 """
     
-    for i, signal in enumerate(active_signals[:10], 1):  # Max 10 göster
+    for i, signal in enumerate(active_signals[:10], 1):
         symbol = signal['symbol']
         entry_price = signal['entry_price']
         target_1 = signal['target_1']
         stop_loss = signal['stop_loss']
         
-        # Güncel fiyat
         current_price = get_current_price(symbol)
         
         if not current_price:
@@ -353,13 +316,12 @@ def send_portfolio_summary():
         
         pnl_pct = ((current_price - entry_price) / entry_price) * 100
         
-        # Durum emoji
         if signal['target_1_hit']:
-            status_emoji = "🎯"  # Hedef 1 vuruldu
+            status_emoji = "🎯"
         elif pnl_pct >= 0:
-            status_emoji = "🟢"  # Karda
+            status_emoji = "🟢"
         else:
-            status_emoji = "🔴"  # Zararda
+            status_emoji = "🔴"
         
         msg += f"{status_emoji} <b>{escape_html(symbol)}</b>\n"
         msg += f"   📥 {entry_price:.2f} → 💰 {current_price:.2f} "
@@ -440,12 +402,10 @@ def track_signals_job():
     print(f"{'='*60}\n")
     
     try:
-        # Hafta içi mi?
         if tr_now().weekday() >= 5:
             print("⏸️ Hafta sonu - takip yapılmıyor")
             return
         
-        # Sinyalleri kontrol et
         action_count = check_active_signals()
         
         if action_count > 0:
@@ -479,15 +439,12 @@ if __name__ == "__main__":
     
     if choice == "1":
         track_signals_job()
-    
     elif choice == "2":
         send_portfolio_summary()
         print("✅ Portföy özeti gönderildi")
-    
     elif choice == "3":
         send_weekly_stats()
         print("✅ Haftalık istatistik gönderildi")
-    
     elif choice == "4":
         signals = get_active_signals()
         print(f"\n📊 {len(signals)} aktif sinyal:")
