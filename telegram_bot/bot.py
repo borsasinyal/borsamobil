@@ -1,6 +1,6 @@
 """
 Telegram Bot - SWING + SAATLİK + 4 SAATLİK + Tavan Adayı
-+ AL PENCERESİ UYARISI (Fiyat sapma kontrolü)
++ AL PENCERESİ UYARISI + EMA 5/22/50/200 gösterimi
 """
 
 import sys
@@ -42,25 +42,12 @@ def get_bot():
 
 
 # ════════════════════════════════════════════════════════════
-# 🆕 AL PENCERESİ KONTROLÜ (FIYAT SAPMA)
+# AL PENCERESİ KONTROLÜ
 # ════════════════════════════════════════════════════════════
 
 def check_entry_window(symbol, signal_price):
-    """
-    Sinyal fiyatı ile şu anki fiyatı karşılaştır
-    
-    Returns:
-        dict: {
-            'status': 'valid' / 'check' / 'missed',
-            'emoji': '🟢' / '🟡' / '🔴',
-            'title': 'HALA GEÇERLİ' / 'KONTROL ET' / 'KAÇTI',
-            'current_price': float,
-            'change_pct': float,
-            'message': str
-        }
-    """
+    """Sinyal fiyatı ile şu anki fiyatı karşılaştır"""
     try:
-        # Önce TradingView'dan dene
         current_price = None
         
         try:
@@ -70,7 +57,6 @@ def check_entry_window(symbol, signal_price):
         except:
             pass
         
-        # TV başarısızsa Yahoo'ya düş
         if not current_price:
             try:
                 import yfinance as yf
@@ -82,85 +68,57 @@ def check_entry_window(symbol, signal_price):
             except:
                 pass
         
-        # Fiyat alınamadıysa
         if not current_price or current_price <= 0:
             return {
-                'status': 'unknown',
-                'emoji': '⚪',
-                'title': 'FİYAT ALINAMADI',
-                'current_price': signal_price,
-                'change_pct': 0,
+                'status': 'unknown', 'emoji': '⚪', 'title': 'FİYAT ALINAMADI',
+                'current_price': signal_price, 'change_pct': 0,
                 'message': 'Anlık fiyat kontrol edilemedi'
             }
         
-        # Değişim yüzdesi
         change_pct = ((current_price - signal_price) / signal_price) * 100
         abs_change = abs(change_pct)
         
-        # Durum belirleme
         if abs_change < 1:
             return {
-                'status': 'valid',
-                'emoji': '🟢',
-                'title': 'HALA GEÇERLİ',
-                'current_price': current_price,
-                'change_pct': change_pct,
+                'status': 'valid', 'emoji': '🟢', 'title': 'HALA GEÇERLİ',
+                'current_price': current_price, 'change_pct': change_pct,
                 'message': 'Fiyat sinyal bölgesinde, giriş uygun'
             }
         elif change_pct >= 2:
             return {
-                'status': 'missed',
-                'emoji': '🔴',
-                'title': 'KAÇTI - GİRME!',
-                'current_price': current_price,
-                'change_pct': change_pct,
+                'status': 'missed', 'emoji': '🔴', 'title': 'KAÇTI - GİRME!',
+                'current_price': current_price, 'change_pct': change_pct,
                 'message': f'Fiyat %{change_pct:.2f} yukarı kaçmış, girişte peşin zarar!'
             }
         elif change_pct >= 1:
             return {
-                'status': 'check',
-                'emoji': '🟡',
-                'title': 'KONTROL ET',
-                'current_price': current_price,
-                'change_pct': change_pct,
+                'status': 'check', 'emoji': '🟡', 'title': 'KONTROL ET',
+                'current_price': current_price, 'change_pct': change_pct,
                 'message': f'Fiyat %{change_pct:.2f} sapmış, dikkatli gir'
             }
         elif change_pct <= -2:
-            # Fiyat DÜŞMÜŞ - Daha iyi giriş fırsatı!
             return {
-                'status': 'better',
-                'emoji': '🟢',
-                'title': 'DAHA İYİ FİYAT!',
-                'current_price': current_price,
-                'change_pct': change_pct,
+                'status': 'better', 'emoji': '🟢', 'title': 'DAHA İYİ FİYAT!',
+                'current_price': current_price, 'change_pct': change_pct,
                 'message': f'Fiyat %{abs(change_pct):.2f} DÜŞMÜŞ - Fırsat!'
             }
         elif change_pct <= -1:
             return {
-                'status': 'valid',
-                'emoji': '🟢',
-                'title': 'HALA GEÇERLİ',
-                'current_price': current_price,
-                'change_pct': change_pct,
+                'status': 'valid', 'emoji': '🟢', 'title': 'HALA GEÇERLİ',
+                'current_price': current_price, 'change_pct': change_pct,
                 'message': 'Fiyat hafif düşmüş, giriş uygun'
             }
         else:
             return {
-                'status': 'valid',
-                'emoji': '🟢',
-                'title': 'HALA GEÇERLİ',
-                'current_price': current_price,
-                'change_pct': change_pct,
+                'status': 'valid', 'emoji': '🟢', 'title': 'HALA GEÇERLİ',
+                'current_price': current_price, 'change_pct': change_pct,
                 'message': 'Fiyat sinyal bölgesinde'
             }
     except Exception as e:
         print(f"⚠️ Entry window hatası ({symbol}): {e}")
         return {
-            'status': 'unknown',
-            'emoji': '⚪',
-            'title': 'KONTROL EDİLEMEDİ',
-            'current_price': signal_price,
-            'change_pct': 0,
+            'status': 'unknown', 'emoji': '⚪', 'title': 'KONTROL EDİLEMEDİ',
+            'current_price': signal_price, 'change_pct': 0,
             'message': 'Kontrol yapılamadı'
         }
 
@@ -219,7 +177,7 @@ def format_entry_window_box(entry_check):
 🛑 <b>GİRME! Bir sonraki fırsatı bekle</b>
 
 """
-    else:  # unknown
+    else:
         box = f"""
 ⚪⚪⚪━━━━━━━━━━━━━━━━━⚪⚪⚪
    ℹ️ <b>{title}</b>
@@ -303,7 +261,7 @@ def format_summary_card(signals, max_signals=5):
 
 
 # ════════════════════════════════════════════════════════════
-# SWING SİNYAL KARTI (+ AL PENCERESİ)
+# SWING SİNYAL KARTI
 # ════════════════════════════════════════════════════════════
 
 def format_signal_for_telegram(signal, signal_index=1):
@@ -331,7 +289,6 @@ def format_signal_for_telegram(signal, signal_index=1):
     
     tavan = is_tavan_adayi(signal)
     
-    # 🆕 AL PENCERESİ KONTROLÜ
     entry_check = check_entry_window(signal['symbol'], price)
     entry_box = format_entry_window_box(entry_check)
     
@@ -353,7 +310,6 @@ def format_signal_for_telegram(signal, signal_index=1):
         msg += f"     {medal} <b>SİNYAL #{signal_index}</b>\n"
         msg += f"{color}{color}{color}{color}{color}{color}{color}{color}{color}{color}{color}{color}\n\n"
     
-    # 🆕 AL PENCERESİ EN ÜSTTE
     msg += entry_box
     
     msg += f"{emoji} <b>{label}</b>\n━━━━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -372,7 +328,6 @@ def format_signal_for_telegram(signal, signal_index=1):
     msg += "━━━━━━━━━━━━━━━━━━━━━━━\n💼 <b>İŞLEM PLANI - 3 HEDEF</b>\n━━━━━━━━━━━━━━━━━━━━━━━\n\n"
     msg += f"📥 <b>GİRİŞ:</b> {t['entry']:.2f} TL\n"
     
-    # 🆕 AL PENCERESİ DURUMUNA GÖRE UYARI
     if entry_check['status'] == 'missed':
         msg += f"   🔴 <b>KAÇTI!</b> Şuan {entry_check['current_price']:.2f} TL\n\n"
     elif entry_check['status'] == 'check':
@@ -411,17 +366,19 @@ def format_signal_for_telegram(signal, signal_index=1):
     msg += f"🚀 Kırılım   : <b>{b['breakout_candle']['score']}/{b['breakout_candle']['max']}</b>\n"
     msg += f"💧 Likidite  : <b>{b['liquidity']['score']}/{b['liquidity']['max']}</b>\n\n"
     
+    # SEVİYELER - EMA 5/22/50/200
     kl = signal.get('key_levels',{})
-    if any([kl.get('pivot'),kl.get('r1'),kl.get('ema_9')]):
+    if any([kl.get('pivot'),kl.get('r1'),kl.get('ema_5')]):
         msg += "━━━━━━━━━━━━━━━━━━━━━━━\n📍 <b>SEVİYELER</b>\n━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         if kl.get('pivot'): msg += f"{'🟢' if price>kl['pivot'] else '🔴'} Pivot : <b>{kl['pivot']:.2f}</b>\n"
         if kl.get('r1'): msg += f"{'✅' if price>kl['r1'] else '🎯'} R1    : <b>{kl['r1']:.2f}</b>\n"
         if kl.get('r2'): msg += f"{'✅' if price>kl['r2'] else '🎯'} R2    : <b>{kl['r2']:.2f}</b>\n"
         if kl.get('r3'): msg += f"{'✅' if price>kl['r3'] else '🎯'} R3    : <b>{kl['r3']:.2f}</b>\n"
         if kl.get('s1'): msg += f"⬇️ S1    : <b>{kl['s1']:.2f}</b>\n"
-        if kl.get('ema_9'): msg += f"📊 EMA9  : <b>{kl['ema_9']:.2f}</b>\n"
-        if kl.get('ema_21'): msg += f"📊 EMA21 : <b>{kl['ema_21']:.2f}</b>\n"
+        if kl.get('ema_5'): msg += f"📊 EMA5  : <b>{kl['ema_5']:.2f}</b>\n"
+        if kl.get('ema_22'): msg += f"📊 EMA22 : <b>{kl['ema_22']:.2f}</b>\n"
         if kl.get('ema_50'): msg += f"📊 EMA50 : <b>{kl['ema_50']:.2f}</b>\n"
+        if kl.get('ema_200'): msg += f"💎 EMA200: <b>{kl['ema_200']:.2f}</b>\n"
         msg += "\n"
     
     msg += "━━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -434,10 +391,8 @@ def format_signal_for_telegram(signal, signal_index=1):
     else: msg += f"{color}{color}{color}{color}{color}{color}{color}{color}{color}{color}{color}{color}"
     
     return msg
-
-
-# ════════════════════════════════════════════════════════════
-# SAATLİK SİNYAL KARTI (+ AL PENCERESİ)
+    # ════════════════════════════════════════════════════════════
+# SAATLİK SİNYAL KARTI
 # ════════════════════════════════════════════════════════════
 
 def format_hourly_signal(signal, signal_index=1):
@@ -460,7 +415,6 @@ def format_hourly_signal(signal, signal_index=1):
     
     ind = signal.get('indicators',{})
     
-    # 🆕 AL PENCERESİ
     entry_check = check_entry_window(signal.get('symbol'), price)
     entry_box = format_entry_window_box(entry_check)
     
@@ -469,7 +423,6 @@ def format_hourly_signal(signal, signal_index=1):
     msg += f"  <b>BUGÜN TRADE EDİLEBİLİR!</b>\n"
     msg += "⚡⚡⚡━━━━━━━━━━━━━━━━━⚡⚡⚡\n\n"
     
-    # 🆕 AL PENCERESİ
     msg += entry_box
     
     msg += f"📌 <b>{symbol}</b> ⚡\n💰 <b>{price:.2f} TL</b>\n⏰ {tr_now().strftime('%H:%M - %d.%m.%Y')}\n\n"
@@ -508,11 +461,10 @@ def format_hourly_signal(signal, signal_index=1):
 
 
 # ════════════════════════════════════════════════════════════
-# 4 SAATLİK SİNYAL KARTI (+ AL PENCERESİ)
+# 4 SAATLİK SİNYAL KARTI
 # ════════════════════════════════════════════════════════════
 
 def format_4h_signal(signal, signal_index=1):
-    """4 SAATLİK PREMİUM SİNYAL KARTI"""
     if not signal: return None
     
     t = signal.get('targets', {})
@@ -533,17 +485,14 @@ def format_4h_signal(signal, signal_index=1):
     
     medal = get_medal_emoji(signal_index)
     
-    # 🆕 AL PENCERESİ
     entry_check = check_entry_window(signal.get('symbol'), price)
     entry_box = format_entry_window_box(entry_check)
     
-    # PREMİUM MOR ÇERÇEVE
     msg = "🟣🔵🟣🔵━━━━━━━━━━━━━🔵🟣🔵🟣\n"
     msg += f"  🕐 {medal} <b>4 SAATLİK SİNYAL #{signal_index}</b>\n"
     msg += f"  📊 <b>İLK 4H MUM ANALİZİ</b>\n"
     msg += "🟣🔵🟣🔵━━━━━━━━━━━━━🔵🟣🔵🟣\n\n"
     
-    # 🆕 AL PENCERESİ
     msg += entry_box
     
     msg += f"{emoji} <b>{label}</b>\n━━━━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -672,12 +621,13 @@ def format_4h_signal(signal, signal_index=1):
         msg += "🟣━━━━━━━━━━━━━━━━━━━━━🟣\n\n"
         msg += f"💥 Hacim     : <b>{b.get('volume',{}).get('score',0)}/{b.get('volume',{}).get('max',25)}</b>\n"
         msg += f"⚡ Momentum  : <b>{b.get('momentum',{}).get('score',0)}/{b.get('momentum',{}).get('max',22)}</b>\n"
-        msg += f"📈 Trend     : <b>{b.get('trend',{}).get('score',0)}/{b.get('trend',{}).get('max',25)}</b>\n"
+        msg += f"📈 Trend     : <b>{b.get('trend',{}).get('score',0)}/{b.get('trend',{}).get('max',30)}</b>\n"
         msg += f"🌊 WaveTrend : <b>{b.get('wavetrend',{}).get('score',0)}/{b.get('wavetrend',{}).get('max',8)}</b>\n"
         msg += f"🎯 Pivot     : <b>{b.get('vwap_pivot',{}).get('score',0)}/{b.get('vwap_pivot',{}).get('max',15)}</b>\n"
-        msg += f"🚀 Kırılım   : <b>{b.get('breakout_candle',{}).get('score',0)}/{b.get('breakout_candle',{}).get('max',5)}</b>\n"
+        msg += f"🚀 Kırılım   : <b>{b.get('breakout_candle',{}).get('score',0)}/{b.get('breakout_candle',{}).get('max',10)}</b>\n"
         msg += f"💧 Likidite  : <b>{b.get('liquidity',{}).get('score',0)}/{b.get('liquidity',{}).get('max',5)}</b>\n\n"
     
+    # SEVİYELER - EMA 5/22/50/200
     kl = signal.get('key_levels', {})
     if any([kl.get('pivot'), kl.get('r1'), kl.get('ema_50')]):
         msg += "📍━━━━━━━━━━━━━━━━━━━━━📍\n"
@@ -688,9 +638,10 @@ def format_4h_signal(signal, signal_index=1):
         if kl.get('r2'): msg += f"{'✅' if price > kl['r2'] else '🎯'} R2    : <b>{kl['r2']:.2f}</b>\n"
         if kl.get('r3'): msg += f"{'✅' if price > kl['r3'] else '🎯'} R3    : <b>{kl['r3']:.2f}</b>\n"
         if kl.get('s1'): msg += f"⬇️ S1    : <b>{kl['s1']:.2f}</b>\n"
-        if kl.get('ema_9'): msg += f"📊 EMA9  : <b>{kl['ema_9']:.2f}</b>\n"
-        if kl.get('ema_21'): msg += f"📊 EMA21 : <b>{kl['ema_21']:.2f}</b>\n"
+        if kl.get('ema_5'): msg += f"📊 EMA5  : <b>{kl['ema_5']:.2f}</b>\n"
+        if kl.get('ema_22'): msg += f"📊 EMA22 : <b>{kl['ema_22']:.2f}</b>\n"
         if kl.get('ema_50'): msg += f"📊 EMA50 : <b>{kl['ema_50']:.2f}</b>\n"
+        if kl.get('ema_200'): msg += f"💎 EMA200: <b>{kl['ema_200']:.2f}</b>\n"
         msg += "\n"
     
     msg += "🟣━━━━━━━━━━━━━━━━━━━━━🟣\n"
@@ -862,7 +813,7 @@ def send_momentum_warning(symbol, current_price, entry_price, reason):
 # ════════════════════════════════════════════════════════════
 
 async def send_test_message_async():
-    msg = f"🎉 <b>BOT AKTİF</b>\n━━━━━━━━━━━━━━━━━━━━━━━\n✅ SWING + SAATLİK + 4H sinyaller\n⚡ Tavan adayı tespiti\n🎯 AL PENCERESİ uyarısı\n🕐 4 Saatlik premium analiz\n⏰ {tr_now().strftime('%H:%M - %d.%m.%Y')}"
+    msg = f"🎉 <b>BOT AKTİF</b>\n━━━━━━━━━━━━━━━━━━━━━━━\n✅ SWING + SAATLİK + 4H sinyaller\n⚡ Tavan adayı tespiti\n🎯 AL PENCERESİ uyarısı\n📊 EMA 5/22/50/200 sistemi\n👑 Golden Cross tespiti\n⏰ {tr_now().strftime('%H:%M - %d.%m.%Y')}"
     return await send_message_async(msg)
 
 def send_test_message():
