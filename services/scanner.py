@@ -1,7 +1,6 @@
 """
 Profesyonel Tarama Motoru
-GÜNLÜK + SAATLİK + 4 SAATLİK + AKILLI SPAM FİLTRESİ
-Esnetilmiş güvenlik filtreleri (Dip dönüşü kaçırma önleme)
+GÜNLÜK + SAATLİK (3 TEYİT SİSTEMİ) + 4 SAATLİK
 """
 
 import sys
@@ -23,11 +22,10 @@ from services.signal_engine import generate_signal, format_signal_message
 
 
 # ════════════════════════════════════════════════════════════
-# GÜÇLÜ MUM TESPİTİ (Filtre esnetme için)
+# GÜÇLÜ MUM TESPİTİ
 # ════════════════════════════════════════════════════════════
 
 def has_strong_reversal_candle(analysis):
-    """Güçlü dip dönüş formasyonu var mı?"""
     candle_patterns = analysis.get('candle_patterns', [])
     strong_patterns = ['three_white_soldiers', 'bullish_engulfing', 'morning_star', 'hammer']
     for p in candle_patterns:
@@ -37,7 +35,6 @@ def has_strong_reversal_candle(analysis):
 
 
 def has_rsi_reversal(analysis):
-    """RSI dip dönüşü sinyali var mı?"""
     rsi = analysis.get('rsi')
     prev_rsi = analysis.get('prev_rsi')
     if rsi and prev_rsi and rsi < 40 and rsi > prev_rsi:
@@ -46,7 +43,122 @@ def has_rsi_reversal(analysis):
 
 
 # ════════════════════════════════════════════════════════════
-# GÜVENLİK FİLTRELERİ (ESNETİLMİŞ)
+# 🆕 SAATLİK İÇİN 3 TEYİT SİSTEMİ
+# ════════════════════════════════════════════════════════════
+
+def check_hourly_confirmations(symbol, hourly_analysis):
+    """
+    Saatlik sinyal için 3 teyit kontrolü:
+    1. Günlük trend pozitif mi? (Fiyat > EMA 22 günlük)
+    2. Son 3 saatlik mumdan en az 2'si yeşil mi?
+    3. Saatlik RVOL >= 1.5x mi?
+    
+    Returns:
+        dict: {
+            'passed': True/False (3'ü birden geçerse True),
+            'details': [{'check': str, 'passed': bool, 'value': str}, ...],
+            'passed_count': int
+        }
+    """
+    details = []
+    passed_count = 0
+    
+    # ═══════════════════════════════════════
+    # TEYİT 1: Günlük trend pozitif
+    # ═══════════════════════════════════════
+    daily_positive = False
+    daily_detail = "Günlük veri yok"
+    
+    try:
+        daily_data = get_stock_history(symbol, days=100)
+        if daily_data and len(daily_data) >= 25:
+            daily_df = pd.DataFrame(daily_data)
+            daily_analysis = analyze_stock(daily_df, timeframe='daily')
+            
+            if daily_analysis:
+                current = daily_analysis.get('current_price')
+                ema_22 = daily_analysis.get('ema_22')
+                
+                if current and ema_22:
+                    if current > ema_22:
+                        daily_positive = True
+                        daily_detail = f"Fiyat({current:.2f}) > EMA22({ema_22:.2f})"
+                    else:
+                        daily_detail = f"Fiyat({current:.2f}) < EMA22({ema_22:.2f}) ❌"
+    except Exception as e:
+        daily_detail = f"Hata: {str(e)[:30]}"
+    
+    details.append({
+        'check': 'Günlük trend pozitif',
+        'passed': daily_positive,
+        'value': daily_detail
+    })
+    if daily_positive:
+        passed_count += 1
+    
+    # ═══════════════════════════════════════
+    # TEYİT 2: Son 3 saatlik mumdan 2'si yeşil
+    # ═══════════════════════════════════════
+    momentum_ok = False
+    momentum_detail = "Veri yok"
+    
+    try:
+        from services.tradingview_fetcher import fetch_stock_tv, TV_AVAILABLE
+        if TV_AVAILABLE:
+            hourly_data = fetch_stock_tv(symbol, n_bars=5, interval='hourly')
+            if hourly_data and len(hourly_data) >= 3:
+                last_3 = hourly_data[-3:]
+                green_count = sum(1 for candle in last_3 if candle['close'] > candle['open'])
+                
+                if green_count >= 2:
+                    momentum_ok = True
+                    momentum_detail = f"Son 3'te {green_count} yeşil mum ✅"
+                else:
+                    momentum_detail = f"Son 3'te {green_count} yeşil mum ❌"
+    except Exception as e:
+        momentum_detail = f"Hata: {str(e)[:30]}"
+    
+    details.append({
+        'check': 'Son momentum (3 mumdan 2 yeşil)',
+        'passed': momentum_ok,
+        'value': momentum_detail
+    })
+    if momentum_ok:
+        passed_count += 1
+    
+    # ═══════════════════════════════════════
+    # TEYİT 3: Hacim onayı (RVOL >= 1.5x)
+    # ═══════════════════════════════════════
+    volume_ok = False
+    volume_detail = "Hacim yok"
+    
+    rvol = hourly_analysis.get('rvol', 0)
+    if rvol >= 1.5:
+        volume_ok = True
+        volume_detail = f"RVOL {rvol:.1f}x ✅"
+    else:
+        volume_detail = f"RVOL {rvol:.1f}x (< 1.5x) ❌"
+    
+    details.append({
+        'check': 'Hacim onayı (RVOL >= 1.5x)',
+        'passed': volume_ok,
+        'value': volume_detail
+    })
+    if volume_ok:
+        passed_count += 1
+    
+    # 3 TEYİT DE GEÇMELİ
+    passed = (passed_count == 3)
+    
+    return {
+        'passed': passed,
+        'details': details,
+        'passed_count': passed_count
+    }
+
+
+# ════════════════════════════════════════════════════════════
+# GÜVENLİK FİLTRELERİ
 # ════════════════════════════════════════════════════════════
 
 def passes_safety_filters(symbol, df, analysis):
@@ -64,43 +176,35 @@ def passes_safety_filters(symbol, df, analysis):
     if avg_volume_tl < 2_000_000:
         return False, f"Likidite düşük ({avg_volume_tl/1_000_000:.1f}M TL)"
     
-    # 🆕 DİP DÖNÜŞ MUAFİYETİ KONTROLÜ
     is_reversal_candidate = has_strong_reversal_candle(analysis) or has_rsi_reversal(analysis)
     
-    # DÜŞEN BIÇAK FİLTRESİ (Dip dönüşü varsa esnet!)
     last_5_closes = df_sorted['close'].tail(5).tolist()
     if len(last_5_closes) >= 5:
         all_declining = all(last_5_closes[i] > last_5_closes[i+1] for i in range(len(last_5_closes)-1))
         if all_declining:
             total_drop = ((last_5_closes[0] - last_5_closes[-1]) / last_5_closes[0]) * 100
-            # DİP DÖNÜŞÜ VARSA: %15'e kadar kabul (normalde %8)
             drop_threshold = 15 if is_reversal_candidate else 8
             if total_drop > drop_threshold:
                 return False, f"Düşen bıçak ({total_drop:.1f}%)"
     
-    # 30 GÜNLÜK DÜŞÜŞ FİLTRESİ (Dip dönüşü varsa esnet!)
     if len(df_sorted) >= 30:
         price_30 = df_sorted['close'].iloc[-30]
         drop_30 = ((price_30 - current_price) / price_30) * 100
-        # DİP DÖNÜŞÜ VARSA: %50'ye kadar kabul (normalde %35)
         drop30_threshold = 50 if is_reversal_candidate else 35
         if drop_30 > drop30_threshold:
             return False, f"30 günde %{drop_30:.0f} düşüş"
     
-    # ATR FİLTRESİ
     atr = analysis.get('atr')
     if atr is not None and current_price > 0:
         atr_pct = (atr / current_price) * 100
         if atr_pct > 10:
             return False, f"Aşırı volatil (ATR: %{atr_pct:.1f})"
     
-    # 🆕 ADX FİLTRESİ (12 → 8, dip dönüşü için esnetildi)
     adx = analysis.get('adx')
     if adx is not None:
-        # Dip dönüşü adayı ise ADX filtresi TAMAMEN muaf
         if is_reversal_candidate:
-            pass  # ADX kontrol etme
-        elif adx < 8:  # 12 → 8
+            pass
+        elif adx < 8:
             return False, f"Trend yok (ADX: {adx:.1f})"
     
     return True, "OK"
@@ -150,6 +254,20 @@ def scan_single_stock(symbol, min_score=65, use_15m=False, use_hourly=False, use
             signal = generate_signal(symbol, analysis)
             if not signal or signal['score'] < min_score:
                 return None
+            
+            # 🆕 3 TEYİT KONTROLÜ
+            confirmations = check_hourly_confirmations(symbol, analysis)
+            
+            if not confirmations['passed']:
+                # Teyit geçmedi, sinyal iptal
+                return {
+                    'symbol': symbol.replace('.IS', ''),
+                    'filtered': True,
+                    'filter_reason': f"Teyit yetersiz ({confirmations['passed_count']}/3)"
+                }
+            
+            # Teyit detaylarını signal'e ekle
+            signal['hourly_confirmations'] = confirmations
             signal['timeframe'] = '1h'
             signal['is_hourly'] = True
             signal['is_4h'] = False
@@ -166,7 +284,7 @@ def scan_single_stock(symbol, min_score=65, use_15m=False, use_hourly=False, use
             return None
         
         df = pd.DataFrame(data)
-        analysis = analyze_stock(df)
+        analysis = analyze_stock(df, timeframe='daily')
         if not analysis:
             return None
         
@@ -193,7 +311,6 @@ def scan_single_stock(symbol, min_score=65, use_15m=False, use_hourly=False, use
 # ════════════════════════════════════════════════════════════
 
 def get_last_signal_info(symbol, hours=4):
-    """Son X saatte gönderilen sinyal bilgisini al"""
     try:
         conn = get_connection()
         cursor = conn.cursor()
@@ -216,12 +333,6 @@ def get_last_signal_info(symbol, hours=4):
 
 
 def apply_smart_spam_filter(signals, hours=4, min_score_improvement=10):
-    """
-    AKILLI SPAM FİLTRESİ
-    - Aynı hisse son X saatte gelmişse filtrele
-    - AMA skor +10 arttıysa → GÖNDER
-    - AMA fiyat %3+ değiştiyse → GÖNDER
-    """
     if not signals:
         return signals
     
@@ -241,7 +352,6 @@ def apply_smart_spam_filter(signals, hours=4, min_score_improvement=10):
             continue
         
         score_improvement = new_score - last_score
-        
         price_change_pct = 0
         if last_price and last_price > 0:
             price_change_pct = abs((new_price - last_price) / last_price) * 100
@@ -283,7 +393,7 @@ def scan_all_stocks(min_score=65, save_to_db=True, verbose=False, use_15m=False,
     if use_4h:
         timeframe = "4 SAATLİK"
     elif use_hourly:
-        timeframe = "SAATLİK"
+        timeframe = "SAATLİK (3 TEYİT)"
     elif use_15m:
         timeframe = "15 DAKİKALIK"
     else:
@@ -357,6 +467,10 @@ def scan_all_stocks(min_score=65, save_to_db=True, verbose=False, use_15m=False,
     if apply_spam_filter and original_count != len(signals):
         print(f"🔇 Spam filtrelendi: {original_count - len(signals)}")
     print(f"🚫 Filtrelendi    : {len(filtered_out)}")
+    if use_hourly:
+        teyit_filtered = [f for f in filtered_out if 'Teyit yetersiz' in f.get('filter_reason', '')]
+        if teyit_filtered:
+            print(f"   ⚠️ Teyit yetersiz: {len(teyit_filtered)}")
     print(f"⚪ Veri Yok      : {len(no_data)}")
     print(f"📋 Toplam         : {len(symbols_list)}")
     if add_to_tracker and not use_hourly and not use_4h:
@@ -367,17 +481,26 @@ def scan_all_stocks(min_score=65, save_to_db=True, verbose=False, use_15m=False,
 
 
 # ════════════════════════════════════════════════════════════
-# SAATLİK TARAMA
+# SAATLİK TARAMA (Min skor: 68 + 3 TEYİT)
 # ════════════════════════════════════════════════════════════
 
-def scan_hourly_stocks(min_score=60, symbols_list=None):
+def scan_hourly_stocks(min_score=68, symbols_list=None):
+    """
+    SAATLİK VERİDEN TARAMA
+    - Min skor: 68 (60'tan yükseltildi)
+    - 3 TEYİT sistemi:
+      1. Günlük trend pozitif
+      2. Son 3 mumdan 2 yeşil
+      3. RVOL >= 1.5x
+    """
     if symbols_list is None:
         symbols_list = BIST_SYMBOLS[:200]
     
     print(f"\n{'='*60}")
-    print(f"⚡ SAATLİK TARAMA - GÜN İÇİ TRADE")
+    print(f"⚡ SAATLİK TARAMA (3 TEYİT SİSTEMİ)")
     print(f"📊 {len(symbols_list)} hisse taranacak")
     print(f"⚙️  Min skor: {min_score}")
+    print(f"✅ Teyitler: Günlük trend + Momentum + Hacim")
     print(f"{'='*60}\n")
     
     hourly_signals = scan_all_stocks(
@@ -394,7 +517,7 @@ def scan_hourly_stocks(min_score=60, symbols_list=None):
         signal['is_4h'] = False
         signal['timeframe'] = '1h'
     
-    print(f"\n⚡ {len(hourly_signals)} SAATLİK SİNYAL BULUNDU")
+    print(f"\n⚡ {len(hourly_signals)} SAATLİK SİNYAL BULUNDU (3 teyit onaylı)")
     return hourly_signals
 
 
@@ -459,12 +582,9 @@ def filter_new_signals(signals, hours=4):
 
 def scan_and_notify(min_score=70, use_15m=False, max_signals=5, spam_hours=0):
     from telegram_bot.bot import send_multiple_signals, send_message
-    
     signals = scan_all_stocks(min_score=min_score, save_to_db=True, verbose=False, use_15m=use_15m)
-    
     if not signals:
         return 0
-    
     sent = send_multiple_signals(signals, max_signals=max_signals)
     return sent
 
@@ -493,7 +613,7 @@ def print_top_signals(signals, top_n=10):
 if __name__ == "__main__":
     print("\n🚀 PROFESYONEL TARAMA MOTORU")
     print("1 → Günlük tarama")
-    print("2 → Saatlik tarama")
+    print("2 → Saatlik tarama (3 TEYİT)")
     print("3 → 4 Saatlik tarama")
     
     choice = input("\nSeçim: ").strip()
@@ -502,7 +622,7 @@ if __name__ == "__main__":
         signals = scan_all_stocks(min_score=60, save_to_db=False, symbols_list=BIST_SYMBOLS[:5])
         print_top_signals(signals)
     elif choice == "2":
-        signals = scan_hourly_stocks(min_score=60, symbols_list=BIST_SYMBOLS[:5])
+        signals = scan_hourly_stocks(min_score=68, symbols_list=BIST_SYMBOLS[:5])
         print_top_signals(signals)
     elif choice == "3":
         signals = scan_4h_stocks(min_score=65, symbols_list=BIST_SYMBOLS[:5])
