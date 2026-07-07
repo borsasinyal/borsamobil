@@ -1,7 +1,6 @@
 """
 Profesyonel Sinyal Motoru - SON HAL
-EMA 5/22 + Golden Cross (50/200) + Güçlü Mum Bonusu + Dip Dönüşü
-Death Cross cezası KALDIRILDI (sadece uyarı)
+EMA 5/22 (Saatlik) + 5/22/50 (4H) + 5/22/50/200 (Günlük)
 """
 
 import sys
@@ -125,7 +124,12 @@ def score_momentum(analysis):
 
 
 def score_trend(analysis):
-    """EMA 5/22/50 + GOLDEN CROSS (50/200) - Death Cross cezası YOK"""
+    """
+    EMA sistemi zaman dilimine göre değişir:
+    - Günlük: EMA 5/22/50/200 (Golden Cross var)
+    - 4H: EMA 5/22/50 (Golden Cross yok)
+    - Saatlik: EMA 5/22 (Sadece kısa vade)
+    """
     score = 0; reasons = []
     c = analysis.get('current_price')
     e5 = analysis.get('ema_5'); e22 = analysis.get('ema_22')
@@ -137,7 +141,50 @@ def score_trend(analysis):
     rsi = analysis.get('rsi'); prev_rsi = analysis.get('prev_rsi'); rvol = analysis.get('rvol', 1)
     is_dip = (rsi and prev_rsi and rsi < 40 and rsi > prev_rsi and rvol >= 1.5)
     
-    # EMA SIRALAMA - EMA 5/22/50
+    timeframe = analysis.get('timeframe', 'daily')
+    
+    # ═══════════════════════════════════════
+    # SAATLİK: Sadece EMA 5/22
+    # ═══════════════════════════════════════
+    if timeframe == 'hourly' or (e50 is None):
+        # SAATLİK SİSTEMİ - EMA 5 vs EMA 22
+        if all(v is not None for v in [c, e5, e22]):
+            if c > e5 > e22:
+                score += 12; reasons.append({'icon':'🏆','title':'SAATLİK GÜÇLÜ TREND','detail':'Fiyat>EMA5>EMA22','meaning':'Gün içi yukarı'})
+            elif c > e22:
+                score += 8; reasons.append({'icon':'📈','title':'SAATLİK POZİTİF','detail':'EMA22 üstünde','meaning':'Yukarı'})
+            elif c > e5:
+                score += 4; reasons.append({'icon':'📊','title':'SAATLİK KARIŞIK','detail':'EMA5 üstü, EMA22 altı','meaning':'Belirsiz'})
+            else:
+                if is_dip:
+                    score += 3; reasons.append({'icon':'🎯','title':'SAATLİK DİP DÖNÜŞÜ','detail':f'RSI:{rsi:.1f}','meaning':'Toparlanma başlıyor'})
+                else:
+                    score -= 3; reasons.append({'icon':'🔴','title':'SAATLİK EMA ALTINDA','detail':'Zayıf','meaning':'AŞAĞI'})
+        
+        # 5/22 GOLDEN CROSS (Kısa vade - saatlikte önemli!)
+        pe5 = analysis.get('prev_ema_5'); pe22 = analysis.get('prev_ema_22')
+        if all(v is not None for v in [e5, e22, pe5, pe22]):
+            if pe5 <= pe22 and e5 > e22:
+                score += 6; reasons.append({'icon':'⭐','title':'SAATLİK GOLDEN CROSS','detail':'EMA5>EMA22','meaning':'Gün içi trend dönüşü!'})
+            elif pe5 > pe22 and e5 < e22:
+                reasons.append({'icon':'⚠️','title':'SAATLİK KESİŞİM AŞAĞI','detail':'EMA5<EMA22','meaning':'Momentum zayıflıyor'})
+        
+        # Supertrend + ADX
+        if sd == 1: score += 3; reasons.append({'icon':'🟢','title':'SUPERTREND YUKARI','detail':'Yeşil','meaning':'Yukarı'})
+        
+        if adx is not None:
+            if adx > 30 and pdi and mdi and pdi > mdi: score += 4
+            elif adx > 25: score += 3
+            elif adx > 20: score += 2
+            elif adx > 15: score += 1
+        
+        return min(score, 30), reasons
+    
+    # ═══════════════════════════════════════
+    # GÜNLÜK / 4H: EMA 5/22/50 (+ opsiyonel EMA 200)
+    # ═══════════════════════════════════════
+    
+    # EMA SIRALAMA
     if all(v is not None for v in [c, e5, e22, e50]):
         if c > e5 > e22 > e50: 
             score += 10; reasons.append({'icon':'🏆','title':'MÜKEMMEL TREND','detail':'Fiyat>EMA5>EMA22>EMA50','meaning':'Tüm yukarı'})
@@ -171,12 +218,10 @@ def score_trend(analysis):
             score += 4; reasons.append({'icon':'⭐','title':'GOLDEN CROSS (5/22)','detail':'EMA5>EMA22','meaning':'Yeni trend başlıyor!'})
         elif pe5 > pe22 and e5 < e22:
             reasons.append({'icon':'⚠️','title':'DEATH CROSS (5/22)','detail':'EMA5<EMA22','meaning':'Trend kırılıyor - dikkat'})
-            # ceza YOK, sadece bilgi
     
-    # 50/200 GOLDEN CROSS (Death Cross cezası YOK)
+    # 50/200 GOLDEN CROSS (SADECE GÜNLÜKTE - EMA 200 varsa!)
     pe200 = analysis.get('prev_ema_200')
     if all(v is not None for v in [e50, e200, pe50, pe200]):
-        # YENİ GOLDEN CROSS
         if pe50 <= pe200 and e50 > e200:
             score += 8; reasons.append({
                 'icon':'👑',
@@ -184,7 +229,6 @@ def score_trend(analysis):
                 'detail':'EMA50 EMA200 yukarı kesti',
                 'meaning':'BOĞA PİYASASI BAŞLIYOR - Nadir ve güçlü!'
             })
-        # MEVCUT BOĞA TRENDİ
         elif e50 > e200:
             score += 3; reasons.append({
                 'icon':'💎',
@@ -192,7 +236,6 @@ def score_trend(analysis):
                 'detail':'EMA50 > EMA200',
                 'meaning':'Boğa piyasası devam ediyor'
             })
-        # DEATH CROSS - CEZA YOK, sadece BİLGİ
         elif pe50 >= pe200 and e50 < e200:
             reasons.append({
                 'icon':'☠️',
@@ -200,8 +243,6 @@ def score_trend(analysis):
                 'detail':'EMA50 EMA200 altına indi',
                 'meaning':'Uzun vade zayıflık - dikkatli ol'
             })
-            # ceza YOK
-        # MEVCUT AYI TRENDİ - CEZA YOK
         elif e50 < e200:
             reasons.append({
                 'icon':'🐻',
@@ -209,11 +250,12 @@ def score_trend(analysis):
                 'detail':'EMA50 < EMA200',
                 'meaning':'Ayı piyasası içinde - fırsat olabilir'
             })
-            # ceza YOK
     
+    # SUPERTREND
     if sd == 1: 
         score += 3; reasons.append({'icon':'🟢','title':'SUPERTREND YUKARI','detail':'Yeşil','meaning':'Yukarı'})
     
+    # ADX
     if adx is not None:
         if adx > 30 and pdi and mdi and pdi > mdi: 
             score += 4; reasons.append({'icon':'💪','title':'GÜÇLÜ TREND','detail':f'ADX:{adx:.1f}','meaning':'Güçlü'})
@@ -255,21 +297,37 @@ def score_dual_confirmation(analysis):
 
 
 def score_position_bonus(analysis):
+    """
+    Position bonus - EMA 50 yoksa (saatlik) sadece 5 kriter
+    """
     score = 0; reasons = []
     c = analysis.get('current_price'); e22 = analysis.get('ema_22'); e50 = analysis.get('ema_50')
     macd = analysis.get('macd'); ms = analysis.get('macd_signal')
     rvol = analysis.get('rvol', 1); rsi = analysis.get('rsi', 50); sd = analysis.get('supertrend_dir')
+    
     cond = 0
+    max_cond = 5  # EMA50 yoksa max 5 kriter
+    
     if c and e22 and c > e22: cond += 1
-    if c and e50 and c > e50: cond += 1
+    if c and e50 and c > e50: cond += 1; max_cond = 6  # EMA50 varsa max 6
     if macd and ms and macd > ms: cond += 1
     if rvol >= 1.3: cond += 1
     if 45 <= rsi <= 70: cond += 1
     if sd == 1: cond += 1
-    if cond >= 6: score = 5; reasons.append({'icon':'✨','title':'MÜKEMMEL POZİSYON','detail':f'{cond}/6','meaning':'Çok güçlü'})
-    elif cond == 5: score = 4; reasons.append({'icon':'✨','title':'ÇOK İYİ POZİSYON','detail':f'{cond}/6','meaning':'Güçlü'})
-    elif cond == 4: score = 3
-    elif cond == 3: score = 1
+    
+    # Saatlikte 5 kriter üzerinden değerlendir
+    if max_cond == 5:
+        if cond >= 5: score = 5; reasons.append({'icon':'✨','title':'MÜKEMMEL POZİSYON','detail':f'{cond}/5','meaning':'Çok güçlü'})
+        elif cond == 4: score = 4; reasons.append({'icon':'✨','title':'ÇOK İYİ POZİSYON','detail':f'{cond}/5','meaning':'Güçlü'})
+        elif cond == 3: score = 2
+        elif cond == 2: score = 1
+    else:
+        # Günlük/4H - 6 kriter
+        if cond >= 6: score = 5; reasons.append({'icon':'✨','title':'MÜKEMMEL POZİSYON','detail':f'{cond}/6','meaning':'Çok güçlü'})
+        elif cond == 5: score = 4; reasons.append({'icon':'✨','title':'ÇOK İYİ POZİSYON','detail':f'{cond}/6','meaning':'Güçlü'})
+        elif cond == 4: score = 3
+        elif cond == 3: score = 1
+    
     return score, reasons
 
 
@@ -486,7 +544,7 @@ def generate_warnings(analysis):
     if rvol is not None and rvol < 0.7:
         warnings.append({'level':'LOW','icon':'⚠️','title':'HACİM DÜŞÜK','detail':f'RVOL:{rvol:.2f}x','action':'Dikkatli'})
 
-    # DEATH CROSS uyarısı (sadece bilgi, ceza yok)
+    # DEATH CROSS uyarısı (sadece günlükte, EMA200 varsa)
     e50 = analysis.get('ema_50'); e200 = analysis.get('ema_200')
     pe50 = analysis.get('prev_ema_50'); pe200 = analysis.get('prev_ema_200')
     if all(v is not None for v in [e50, e200, pe50, pe200]):
@@ -573,4 +631,4 @@ def format_signal_message(signal):
 
 
 if __name__ == "__main__":
-    print("✅ Signal Engine - EMA 5/22 + Golden Cross + Death Cross ceza YOK")
+    print("✅ Signal Engine - Günlük: 5/22/50/200 | Saatlik: 5/22 | 4H: 5/22/50")
