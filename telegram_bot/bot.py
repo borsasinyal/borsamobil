@@ -1,6 +1,6 @@
 """
-Telegram Bot - SWING + SAATLİK + 4 SAATLİK + Tavan Adayı
-+ AL PENCERESİ UYARISI + EMA 5/22/50/200 gösterimi
+Telegram Bot - SWING + SAATLİK (3 TEYİT) + 4 SAATLİK + Tavan Adayı
++ AL PENCERESİ + EMA 5/22/50/200
 """
 
 import sys
@@ -366,7 +366,6 @@ def format_signal_for_telegram(signal, signal_index=1):
     msg += f"🚀 Kırılım   : <b>{b['breakout_candle']['score']}/{b['breakout_candle']['max']}</b>\n"
     msg += f"💧 Likidite  : <b>{b['liquidity']['score']}/{b['liquidity']['max']}</b>\n\n"
     
-    # SEVİYELER - EMA 5/22/50/200
     kl = signal.get('key_levels',{})
     if any([kl.get('pivot'),kl.get('r1'),kl.get('ema_5')]):
         msg += "━━━━━━━━━━━━━━━━━━━━━━━\n📍 <b>SEVİYELER</b>\n━━━━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -392,7 +391,7 @@ def format_signal_for_telegram(signal, signal_index=1):
     
     return msg
     # ════════════════════════════════════════════════════════════
-# SAATLİK SİNYAL KARTI
+# SAATLİK SİNYAL KARTI (3 TEYİT KUTUSU)
 # ════════════════════════════════════════════════════════════
 
 def format_hourly_signal(signal, signal_index=1):
@@ -418,10 +417,26 @@ def format_hourly_signal(signal, signal_index=1):
     entry_check = check_entry_window(signal.get('symbol'), price)
     entry_box = format_entry_window_box(entry_check)
     
+    # 🆕 3 TEYİT BİLGİSİ
+    confirmations = signal.get('hourly_confirmations', {})
+    
     msg = "⚡⚡⚡━━━━━━━━━━━━━━━━━⚡⚡⚡\n"
     msg += f"  🕐 <b>SAATLİK SİNYAL #{signal_index}</b>\n"
     msg += f"  <b>BUGÜN TRADE EDİLEBİLİR!</b>\n"
     msg += "⚡⚡⚡━━━━━━━━━━━━━━━━━⚡⚡⚡\n\n"
+    
+    # 🆕 3 TEYİT KUTUSU (EN ÜSTTE)
+    if confirmations and confirmations.get('passed'):
+        msg += "✅✅✅━━━━━━━━━━━━━━━━━✅✅✅\n"
+        msg += "   🎯 <b>3 TEYİT ONAYLI!</b>\n"
+        msg += "✅✅✅━━━━━━━━━━━━━━━━━✅✅✅\n"
+        for detail in confirmations.get('details', []):
+            check_name = escape_html(detail['check'])
+            value = escape_html(detail['value'])
+            icon = "✅" if detail['passed'] else "❌"
+            msg += f"{icon} <b>{check_name}</b>\n"
+            msg += f"   → <i>{value}</i>\n"
+        msg += "💡 <b>Yüksek güvenilirlik!</b>\n\n"
     
     msg += entry_box
     
@@ -627,7 +642,6 @@ def format_4h_signal(signal, signal_index=1):
         msg += f"🚀 Kırılım   : <b>{b.get('breakout_candle',{}).get('score',0)}/{b.get('breakout_candle',{}).get('max',10)}</b>\n"
         msg += f"💧 Likidite  : <b>{b.get('liquidity',{}).get('score',0)}/{b.get('liquidity',{}).get('max',5)}</b>\n\n"
     
-    # SEVİYELER - EMA 5/22/50/200
     kl = signal.get('key_levels', {})
     if any([kl.get('pivot'), kl.get('r1'), kl.get('ema_50')]):
         msg += "📍━━━━━━━━━━━━━━━━━━━━━📍\n"
@@ -641,7 +655,6 @@ def format_4h_signal(signal, signal_index=1):
         if kl.get('ema_5'): msg += f"📊 EMA5  : <b>{kl['ema_5']:.2f}</b>\n"
         if kl.get('ema_22'): msg += f"📊 EMA22 : <b>{kl['ema_22']:.2f}</b>\n"
         if kl.get('ema_50'): msg += f"📊 EMA50 : <b>{kl['ema_50']:.2f}</b>\n"
-        if kl.get('ema_200'): msg += f"💎 EMA200: <b>{kl['ema_200']:.2f}</b>\n"
         msg += "\n"
     
     msg += "🟣━━━━━━━━━━━━━━━━━━━━━🟣\n"
@@ -744,7 +757,7 @@ def send_multiple_signals(signals, max_signals=5):
 
 async def send_hourly_signals_async(signals, max_signals=3):
     if not signals: return 0
-    summary = f"⚡⚡⚡ <b>SAATLİK TARAMA</b> ⚡⚡⚡\n━━━━━━━━━━━━━━━━━━━━━━━\n🕐 <b>{len(signals)}</b> gün içi fırsat!\n⚠️ <i>Bugün kapanışa kadar SAT!</i>\n\n⏰ {tr_now().strftime('%H:%M - %d.%m.%Y')}"
+    summary = f"⚡⚡⚡ <b>SAATLİK TARAMA (3 TEYİT)</b> ⚡⚡⚡\n━━━━━━━━━━━━━━━━━━━━━━━\n🕐 <b>{len(signals)}</b> gün içi fırsat!\n✅ <i>Hepsi 3 teyit onaylı!</i>\n⚠️ <i>Bugün kapanışa kadar SAT!</i>\n\n⏰ {tr_now().strftime('%H:%M - %d.%m.%Y')}"
     await send_message_async(summary.strip())
     await asyncio.sleep(1.5)
     sent = 0
@@ -813,7 +826,7 @@ def send_momentum_warning(symbol, current_price, entry_price, reason):
 # ════════════════════════════════════════════════════════════
 
 async def send_test_message_async():
-    msg = f"🎉 <b>BOT AKTİF</b>\n━━━━━━━━━━━━━━━━━━━━━━━\n✅ SWING + SAATLİK + 4H sinyaller\n⚡ Tavan adayı tespiti\n🎯 AL PENCERESİ uyarısı\n📊 EMA 5/22/50/200 sistemi\n👑 Golden Cross tespiti\n⏰ {tr_now().strftime('%H:%M - %d.%m.%Y')}"
+    msg = f"🎉 <b>BOT AKTİF</b>\n━━━━━━━━━━━━━━━━━━━━━━━\n✅ SWING + SAATLİK (3 TEYİT) + 4H\n⚡ Tavan adayı tespiti\n🎯 AL PENCERESİ uyarısı\n📊 EMA 5/22/50/200 sistemi\n👑 Golden Cross tespiti\n⏰ {tr_now().strftime('%H:%M - %d.%m.%Y')}"
     return await send_message_async(msg)
 
 def send_test_message():
