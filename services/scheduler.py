@@ -1,6 +1,7 @@
 """
-Profesyonel Zamanlayıcı
-GÜNLÜK + SAATLİK (3 TEYİT) + 4 SAATLİK + BIST 100 FİBONACCİ + 20/50 KESİŞEN HİSSELER + PERFORMANS
+Profesyonel Zamanlayıcı - SON HAL
+GÜNLÜK + SAATLİK (3 TEYİT) + 4 SAATLİK + BIST 100 FİBONACCİ
++ 20/50 GERÇEK KESİŞİM (%1 fark) + PERFORMANS
 """
 
 import sys
@@ -155,13 +156,11 @@ def job_4h_scan():
 
 
 # ════════════════════════════════════════════════════════════
-# 🆕 BIST 100 ENDEKS ANALİZİ - FİBONACCİ DESTEK/DİRENÇ
+# BIST 100 - FİBONACCİ DESTEK/DİRENÇ
 # ════════════════════════════════════════════════════════════
 
 def calculate_fibonacci_levels(df, lookback=90):
-    """
-    Son N gün Fibonacci geri çekilme seviyeleri
-    """
+    """Son N gün Fibonacci geri çekilme seviyeleri"""
     if len(df) < lookback:
         lookback = len(df)
     
@@ -172,8 +171,8 @@ def calculate_fibonacci_levels(df, lookback=90):
     
     levels = {
         'zirve': high,
-        'fib_786': high - (diff * 0.214),  # 0.786 = high'dan %21.4 aşağı
-        'fib_618': high - (diff * 0.382),  # 0.618 = high'dan %38.2 aşağı
+        'fib_786': high - (diff * 0.214),
+        'fib_618': high - (diff * 0.382),
         'fib_50': high - (diff * 0.5),
         'fib_382': high - (diff * 0.618),
         'fib_236': high - (diff * 0.764),
@@ -208,7 +207,6 @@ def analyze_bist100():
         if not analysis:
             return None
         
-        # 🆕 FİBONACCİ SEVİYELERİ (Son 90 gün)
         fib_levels = calculate_fibonacci_levels(df, lookback=90)
         
         today_close = analysis.get('current_price')
@@ -269,11 +267,9 @@ def analyze_bist100():
         elif adx > 20: adx_status = "ORTA"
         else: adx_status = "ZAYIF"
         
-        # 🆕 FİBONACCİ BAZLI BEKLENTİ
         yarin_beklenti = []
         cp = today_close
         
-        # Fiyat hangi Fibonacci bölgesinde?
         if cp >= fib_levels['fib_786']:
             yarin_beklenti.append(f"🎯 Fibonacci <b>0.786</b> ({fib_levels['fib_786']:.0f}) üstünde - Güçlü")
             yarin_beklenti.append(f"🚀 Zirve testi: <b>{fib_levels['zirve']:.0f}</b>")
@@ -293,7 +289,6 @@ def analyze_bist100():
             yarin_beklenti.append(f"⛔ Dip bölgesinde - Riskli")
             yarin_beklenti.append(f"🟢 Aşırı satım - tepki alışı olabilir")
         
-        # Trend yorumu ekle
         if trend_status in ["GÜÇLÜ BOĞA", "BOĞA"]:
             if rsi < 70:
                 yarin_beklenti.append("✅ Trend güçlü, yükseliş devam edebilir")
@@ -312,7 +307,7 @@ def analyze_bist100():
             'adx': adx, 'adx_status': adx_status,
             'yarin_beklenti': yarin_beklenti,
             'ema_5': ema_5, 'ema_22': ema_22, 'ema_50': ema_50,
-            'fibonacci': fib_levels,  # 🆕 Fibonacci seviyeleri
+            'fibonacci': fib_levels,
         }
     except Exception as e:
         log_event(f"❌ BIST 100 analiz hatası: {e}")
@@ -347,7 +342,7 @@ def format_bist100_analysis(bist):
     if bist['momentum_detail']: msg += f"   <i>{bist['momentum_detail']}</i>\n"
     msg += "\n"
     
-    # 🆕 FİBONACCİ DESTEK/DİRENÇ
+    # FİBONACCİ DESTEK/DİRENÇ
     fib = bist.get('fibonacci')
     if fib:
         price = bist['price']
@@ -358,7 +353,6 @@ def format_bist100_analysis(bist):
         
         msg += f"🔺 <b>ZİRVE:</b> {fib['zirve']:.0f}\n\n"
         
-        # Dirençler (fiyat üstündekiler)
         if price < fib['fib_786']:
             msg += f"🔴 <b>Direnç (0.786):</b> {fib['fib_786']:.0f}\n"
         if price < fib['fib_618']:
@@ -366,10 +360,8 @@ def format_bist100_analysis(bist):
         if price < fib['fib_50']:
             msg += f"🔴 <b>Direnç (0.5):</b> {fib['fib_50']:.0f}\n"
         
-        # Mevcut fiyat
         msg += f"\n⚪ <b>ŞU AN:</b> <b>{price:.0f}</b>\n\n"
         
-        # Destekler (fiyat altındakiler)
         if price > fib['fib_50']:
             msg += f"🟢 <b>Destek (0.5):</b> {fib['fib_50']:.0f}\n"
         if price > fib['fib_382']:
@@ -397,20 +389,21 @@ def format_bist100_analysis(bist):
 
 
 # ════════════════════════════════════════════════════════════
-# 🆕 20/50 KESİŞEN HİSSELER (Gün Sonu için)
+# 🌟 20/50 KESİŞEN HİSSELER (GERÇEK KESİŞİM - %1 FARK FİLTRESİ)
 # ════════════════════════════════════════════════════════════
 
 def find_20_50_crossovers():
     """
-    Bugün EMA 20/50 yukarı kesişimi olan hisseleri bul
-    Gün sonu raporunda gösterilecek
+    Bugün EMA 20/50 GERÇEK yukarı kesişimi olan hisseleri bul
+    Filtre: Kesişim + EMA20/EMA50 arası fark >= %1
     """
     try:
         from database import get_stock_history
         from services.analyzer import analyze_stock
+        from services.signal_engine import is_real_20_50_crossover
         import pandas as pd
         
-        log_event("🌟 20/50 kesişimi olan hisseler aranıyor...")
+        log_event("🌟 GERÇEK 20/50 kesişimi olan hisseler aranıyor...")
         
         crossovers = []
         
@@ -434,8 +427,10 @@ def find_20_50_crossovers():
                 if not all(v is not None for v in [e20, e50, pe20, pe50]):
                     continue
                 
-                # Bugün 20/50 yukarı kesişim oldu mu?
-                if pe20 <= pe50 and e20 > e50:
+                # 🆕 GERÇEK KESİŞİM KONTROLÜ (%1 fark)
+                is_real, gap = is_real_20_50_crossover(e20, e50, pe20, pe50, min_gap_pct=1.0)
+                
+                if is_real:
                     current = analysis.get('current_price')
                     volume = analysis.get('volume', 0)
                     prev_close = analysis.get('prev_close', current)
@@ -445,13 +440,13 @@ def find_20_50_crossovers():
                     
                     volume_tl = current * volume if volume else 0
                     
-                    # Sadece likit olanları al
                     if volume_tl >= 2_000_000:
                         crossovers.append({
                             'symbol': symbol.replace('.IS', ''),
                             'price': current,
                             'ema_20': e20,
                             'ema_50': e50,
+                            'gap_pct': gap,  # 🆕 Fark yüzdesi
                             'daily_change': daily_change,
                             'rvol': rvol,
                             'rsi': rsi,
@@ -460,10 +455,10 @@ def find_20_50_crossovers():
             except:
                 continue
         
-        # Skora göre sırala (RVOL ve günlük değişim)
-        crossovers.sort(key=lambda x: (x['rvol'], x['daily_change']), reverse=True)
+        # Fark yüzdesine göre sırala (en yüksek fark = en güçlü kesişim)
+        crossovers.sort(key=lambda x: (x['gap_pct'], x['rvol']), reverse=True)
         
-        log_event(f"🌟 {len(crossovers)} hissede 20/50 kesişimi bulundu")
+        log_event(f"🌟 {len(crossovers)} hissede GERÇEK 20/50 kesişimi bulundu")
         return crossovers
     except Exception as e:
         log_event(f"❌ 20/50 tarama hatası: {e}")
@@ -476,13 +471,13 @@ def format_20_50_crossovers_report(crossovers):
         return ""
     
     msg = "🌟🌟🌟━━━━━━━━━━━━━━━━━🌟🌟🌟\n"
-    msg += "   ⚡ <b>EMA 20/50 YUKARI KESİŞENLER</b> ⚡\n"
+    msg += "   ⚡ <b>EMA 20/50 GERÇEK KESİŞİM</b> ⚡\n"
     msg += "   🚀 <b>Bugün oluşan güçlü sinyaller</b>\n"
     msg += "🌟🌟🌟━━━━━━━━━━━━━━━━━🌟🌟🌟\n\n"
-    msg += "💎 <i>Nadir ve değerli teknik sinyal!</i>\n"
-    msg += "📈 <i>Orta vade yükseliş beklentisi</i>\n\n"
+    msg += "💎 <i>Sürtünme değil, GERÇEK kesişim!</i>\n"
+    msg += "📈 <i>EMA20 ile EMA50 arası fark >= %1</i>\n\n"
     
-    for i, c in enumerate(crossovers[:10], 1):  # Max 10 göster
+    for i, c in enumerate(crossovers[:10], 1):
         medal = {1:'🥇', 2:'🥈', 3:'🥉'}.get(i, f"{i}.")
         change_emoji = "🟢" if c['daily_change'] > 0 else "🔴"
         rvol_tag = "🔥🔥" if c['rvol'] > 3 else "🔥" if c['rvol'] > 1.5 else ""
@@ -490,13 +485,14 @@ def format_20_50_crossovers_report(crossovers):
         msg += f"{medal} <b>{c['symbol']}</b> {rvol_tag}\n"
         msg += f"   💰 Fiyat: <b>{c['price']:.2f} TL</b> ({change_emoji}%{c['daily_change']:+.2f})\n"
         msg += f"   🌟 EMA20: {c['ema_20']:.2f} > EMA50: {c['ema_50']:.2f}\n"
+        msg += f"   📏 Fark: <b>%{c['gap_pct']:.2f}</b> (güçlü)\n"
         msg += f"   📊 RVOL: {c['rvol']:.1f}x | RSI: {c['rsi']:.0f}\n\n"
     
     if len(crossovers) > 10:
         msg += f"<i>+{len(crossovers) - 10} hisse daha aynı sinyalde</i>\n\n"
     
     msg += "━━━━━━━━━━━━━━━━━━━━━━━\n"
-    msg += "💡 <b>NOT:</b> Bu hisseler <b>bugün</b> EMA20/50 kesişimi yaşadı.\n"
+    msg += "💡 <b>NOT:</b> Bu hisseler <b>bugün</b> gerçek 20/50 kesişimi yaşadı.\n"
     msg += "⚠️ <i>Yarın açılışta durumlar değişebilir - kontrol et!</i>\n\n"
     
     return msg
@@ -680,34 +676,26 @@ def job_end_of_day_report():
 ⏰ {tr_now().strftime('%H:%M - %d.%m.%Y')}
 📊 Analiz ediliyor...""")
         
-        # ═══════════════════════════════════════
-        # MESAJ 1: BIST 100 ANALİZİ (FİBONACCİ)
-        # ═══════════════════════════════════════
+        # MESAJ 1: BIST 100 (FİBONACCİ)
         bist100 = analyze_bist100()
         msg1 = f"🌆 <b>GÜN SONU RAPORU</b>\n━━━━━━━━━━━━━━━━━━━━━━━\n📅 {tr_now().strftime('%d.%m.%Y - %A')}\n\n"
         msg1 += format_bist100_analysis(bist100)
         send_message(msg1)
         
-        # ═══════════════════════════════════════
-        # MESAJ 2: PERFORMANS RAPORU
-        # ═══════════════════════════════════════
+        # MESAJ 2: PERFORMANS
         perf_msg = format_performance_report()
         send_message(perf_msg)
         
-        # ═══════════════════════════════════════
-        # 🆕 MESAJ 3: 20/50 KESİŞEN HİSSELER
-        # ═══════════════════════════════════════
+        # MESAJ 3: 20/50 KESİŞEN HİSSELER (GERÇEK KESİŞİM)
         crossovers = find_20_50_crossovers()
         if crossovers:
             crossover_msg = format_20_50_crossovers_report(crossovers)
             if crossover_msg:
                 send_message(crossover_msg)
         else:
-            send_message("🌟 <b>EMA 20/50 KESİŞİM</b>\n━━━━━━━━━━━━━━━━━━━━━━━\n<i>Bugün 20/50 yukarı kesişimi olan hisse yok</i>\n\n")
+            send_message("🌟 <b>EMA 20/50 GERÇEK KESİŞİM</b>\n━━━━━━━━━━━━━━━━━━━━━━━\n<i>Bugün gerçek 20/50 yukarı kesişimi olan hisse yok</i>\n<i>(Sürtünmeler filtrelendi)</i>\n\n")
         
-        # ═══════════════════════════════════════
         # MESAJ 4: PİYASA + YARIN HİSSELER
-        # ═══════════════════════════════════════
         movers_data = []
         tomorrow_candidates = []
         
