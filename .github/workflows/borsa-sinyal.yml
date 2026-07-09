@@ -45,6 +45,26 @@ jobs:
           pip install flask yfinance pandas numpy python-telegram-bot apscheduler requests
           pip install --upgrade git+https://github.com/rongardF/tvdatafeed.git
       
+      # 🆕 DB KALICILIĞI - ÖNCE ESKI DB'Yİ İNDİR
+      - name: Eski DB indir (Artifact)
+        uses: dawidd6/action-download-artifact@v3
+        with:
+          name: bot-database
+          path: .
+          workflow: borsa-sinyal.yml
+          workflow_conclusion: ""
+          if_no_artifact_found: warn
+        continue-on-error: true
+      
+      - name: DB durumu kontrol
+        run: |
+          if [ -f "borsa_bot.db" ]; then
+            echo "✅ Eski DB bulundu ve indirildi"
+            ls -lh borsa_bot.db
+          else
+            echo "⚠️ Eski DB yok, yeni oluşturulacak"
+          fi
+      
       - name: Veritabani baslat
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -120,6 +140,16 @@ jobs:
           TV_PASSWORD: ${{ secrets.TV_PASSWORD }}
         run: |
           python -c "from services.signal_tracker import track_signals_job; track_signals_job()"
+      
+      # 🆕 DB KALICILIĞI - YENİ DB'Yİ ARTIFACT OLARAK YÜKLE
+      - name: DB'yi Artifact olarak kaydet
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bot-database
+          path: borsa_bot.db
+          retention-days: 30
+          overwrite: true
       
       - name: Tamamlandi
         run: echo "Gorev tamamlandi"
