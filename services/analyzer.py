@@ -1,6 +1,7 @@
 """
 Profesyonel Teknik Analiz Motoru
 EMA 5/22/50/200 (Günlük) + EMA 5/22 (Saatlik) + EMA 5/22/50 (4H)
++ EMA 20 (Sadece 20/50 kesişim tespiti için)
 """
 
 import pandas as pd
@@ -10,10 +11,6 @@ import os
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-
-# ════════════════════════════════════════════════════════════
-# TEMEL İNDİKATÖRLER
-# ════════════════════════════════════════════════════════════
 
 def calculate_rsi(data, period=14):
     delta = data['close'].diff()
@@ -94,10 +91,6 @@ def calculate_smi(data, k_period=10, k_smooth=3, d_smooth=3):
     return smi, smi_signal
 
 
-# ════════════════════════════════════════════════════════════
-# PROFESYONEL İNDİKATÖRLER
-# ════════════════════════════════════════════════════════════
-
 def calculate_pivot_points(data):
     prev_high = data['high'].shift(1)
     prev_low = data['low'].shift(1)
@@ -140,10 +133,6 @@ def calculate_obv(data):
         else: obv.iloc[i] = obv.iloc[i - 1]
     return obv
 
-
-# ════════════════════════════════════════════════════════════
-# MUM FORMASYONLARI
-# ════════════════════════════════════════════════════════════
 
 def detect_candle_patterns(data):
     patterns = {}
@@ -199,10 +188,6 @@ def get_active_patterns(patterns, index=-1):
     return active
 
 
-# ════════════════════════════════════════════════════════════
-# KIRILIM TESPİTİ
-# ════════════════════════════════════════════════════════════
-
 def detect_breakouts(data, lookback_periods=[5, 10, 20, 50]):
     breakouts = []
     current_price = data['close'].iloc[-1]
@@ -234,10 +219,6 @@ def detect_support_resistance(data, window=20):
     return levels
 
 
-# ════════════════════════════════════════════════════════════
-# MOMENTUM DURUMU
-# ════════════════════════════════════════════════════════════
-
 def detect_momentum_status(data, analysis):
     status = {'direction': 'NEUTRAL', 'strength': 'NORMAL', 'warning': None, 'suggestion': None}
     rsi = analysis.get('rsi')
@@ -267,7 +248,7 @@ def detect_momentum_status(data, analysis):
 
 
 # ════════════════════════════════════════════════════════════
-# ANA ANALİZ FONKSİYONU - Zaman dilimi destekli
+# ANA ANALİZ FONKSİYONU
 # ════════════════════════════════════════════════════════════
 
 def analyze_stock(df, timeframe='daily'):
@@ -275,9 +256,9 @@ def analyze_stock(df, timeframe='daily'):
     Tüm indikatörleri hesapla
     
     timeframe:
-    - 'daily' → EMA 5/22/50/200 (Golden Cross var)
-    - 'hourly' → EMA 5/22 (Hızlı, saatlik trade)
-    - '4h' → EMA 5/22/50 (Orta hız)
+    - 'daily' → EMA 5/22/50/200 (Golden Cross) + EMA 20 (bilgi)
+    - 'hourly' → EMA 5/22
+    - '4h' → EMA 5/22/50
     """
     if len(df) < 20:
         return None
@@ -292,20 +273,22 @@ def analyze_stock(df, timeframe='daily'):
     df['ema_5'] = calculate_ema(df, 5)
     df['ema_22'] = calculate_ema(df, 22)
     
+    # 🆕 EMA 20 (Sadece günlükte, 20/50 kesişim tespiti için)
+    if timeframe == 'daily':
+        df['ema_20'] = calculate_ema(df, 20)
+    else:
+        df['ema_20'] = pd.Series([None] * len(df))
+    
     if timeframe == 'hourly':
-        # SAATLİK: Sadece EMA 5/22
         df['ema_50'] = pd.Series([None] * len(df))
         df['ema_200'] = pd.Series([None] * len(df))
     elif timeframe == '4h':
-        # 4H: EMA 5/22/50
         df['ema_50'] = calculate_ema(df, min(50, len(df)-1)) if len(df) > 50 else calculate_ema(df, max(5, len(df)//2))
         df['ema_200'] = pd.Series([None] * len(df))
     else:
-        # GÜNLÜK: EMA 5/22/50/200 (Golden Cross için hepsi)
         df['ema_50'] = calculate_ema(df, min(50, len(df)-1)) if len(df) > 50 else calculate_ema(df, max(5, len(df)//2))
         df['ema_200'] = calculate_ema(df, min(200, len(df)-1)) if len(df) > 200 else pd.Series([None] * len(df))
     
-    # SMA 200 (referans)
     df['sma_200'] = calculate_sma(df, 200) if len(df) >= 200 else pd.Series([None] * len(df))
     
     df['atr'] = calculate_atr(df)
@@ -348,7 +331,7 @@ def analyze_stock(df, timeframe='daily'):
         except: return None
 
     result = {
-        'timeframe': timeframe,  # YENİ: Zaman dilimi bilgisi
+        'timeframe': timeframe,
         'current_price': sf(last['close']), 'open': sf(last['open']),
         'high': sf(last['high']), 'low': sf(last['low']),
         'volume': sf(last['volume']), 'avg_volume_5': avg_volume_5,
@@ -361,9 +344,11 @@ def analyze_stock(df, timeframe='daily'):
         'bb_lower': sf(last['bb_lower']), 'bb_width': sf(last['bb_width']),
         
         'ema_5': sf(last['ema_5']), 'ema_22': sf(last['ema_22']),
+        'ema_20': sf(last['ema_20']),  # 🆕 EMA 20 (kesişim için)
         'ema_50': sf(last['ema_50']), 'ema_200': sf(last['ema_200']),
         'sma_200': sf(last['sma_200']),
         'prev_ema_5': sf(prev['ema_5']), 'prev_ema_22': sf(prev['ema_22']),
+        'prev_ema_20': sf(prev['ema_20']),  # 🆕 EMA 20 önceki
         'prev_ema_50': sf(prev['ema_50']), 'prev_ema_200': sf(prev['ema_200']),
         
         'wt1': sf(last['wt1']), 'wt2': sf(last['wt2']),
@@ -388,10 +373,6 @@ def analyze_stock(df, timeframe='daily'):
     return result
 
 
-# ════════════════════════════════════════════════════════════
-# SAATLİK ANALİZ (EMA 5/22)
-# ════════════════════════════════════════════════════════════
-
 def analyze_stock_hourly(symbol):
     try:
         from services.tradingview_fetcher import fetch_stock_tv, TV_AVAILABLE
@@ -401,14 +382,10 @@ def analyze_stock_hourly(symbol):
         if not data or len(data) < 20:
             return None
         df = pd.DataFrame(data)
-        return analyze_stock(df, timeframe='hourly')  # ← SAATLİK
+        return analyze_stock(df, timeframe='hourly')
     except:
         return None
 
-
-# ════════════════════════════════════════════════════════════
-# 4 SAATLİK ANALİZ (EMA 5/22/50)
-# ════════════════════════════════════════════════════════════
 
 def analyze_stock_4h(symbol):
     try:
@@ -419,10 +396,10 @@ def analyze_stock_4h(symbol):
         if not data or len(data) < 20:
             return None
         df = pd.DataFrame(data)
-        return analyze_stock(df, timeframe='4h')  # ← 4H
+        return analyze_stock(df, timeframe='4h')
     except:
         return None
 
 
 if __name__ == "__main__":
-    print("✅ Analyzer - Günlük: 5/22/50/200 | Saatlik: 5/22 | 4H: 5/22/50")
+    print("✅ Analyzer - EMA 5/22/50/200 + EMA 20 (20/50 kesişim için)")
