@@ -16,6 +16,7 @@ on:
           - quick_scan
           - 4h_scan
           - end_of_day_report
+          - weekly_report
           - signal_tracker
           - full_scan_with_tracking
 
@@ -45,7 +46,7 @@ jobs:
           pip install flask yfinance pandas numpy python-telegram-bot apscheduler requests
           pip install --upgrade git+https://github.com/rongardF/tvdatafeed.git
       
-      # 🆕 DB KALICILIĞI - ÖNCE ESKI DB'Yİ İNDİR
+      # DB KALICILIĞI - ÖNCE ESKI DB'Yİ İNDİR
       - name: Eski DB indir (Artifact)
         uses: dawidd6/action-download-artifact@v3
         with:
@@ -92,6 +93,15 @@ jobs:
               print("=" * 60)
               from services.scheduler import job_4h_scan
               job_4h_scan()
+          
+          # 🆕 HAFTALIK RAPOR - Veri çekme gerekmez
+          elif job_type == "weekly_report":
+              print("=" * 60)
+              print("📊 HAFTALIK RAPOR")
+              print("=" * 60)
+              from services.scheduler import job_weekly_report
+              job_weekly_report()
+          
           else:
               # DİĞER GÖREVLER - Önce veri çek
               print("=" * 60)
@@ -141,7 +151,7 @@ jobs:
         run: |
           python -c "from services.signal_tracker import track_signals_job; track_signals_job()"
       
-      # 🆕 DB KALICILIĞI - YENİ DB'Yİ ARTIFACT OLARAK YÜKLE
+      # DB KALICILIĞI - YENİ DB'Yİ ARTIFACT OLARAK YÜKLE
       - name: DB'yi Artifact olarak kaydet
         if: always()
         uses: actions/upload-artifact@v4
