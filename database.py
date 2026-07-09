@@ -1,6 +1,6 @@
 """
 Veritabanı yönetimi - SQLite
-Günlük + 15 dakikalık veri + AKTİF SİNYAL TAKİBİ + PERFORMANS
+Günlük + 15 dakikalık veri + AKTİF SİNYAL TAKİBİ + PERFORMANS + BIST TREND HAFIZASI
 """
 
 import sqlite3
@@ -114,6 +114,15 @@ def init_database():
         )
     """)
     
+    # 🆕 BIST 100 TREND HAFIZASI
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS bist_trend_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            trend TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_symbol_date ON stock_prices(symbol, date)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_symbol_dt15 ON stock_prices_15m(symbol, datetime)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_signal_symbol ON signals(symbol)")
@@ -121,11 +130,12 @@ def init_database():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_active_symbol ON active_signals(symbol)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_active_status ON active_signals(status)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_active_created ON active_signals(created_at)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_bist_trend_created ON bist_trend_history(created_at)")
     
     conn.commit()
     conn.close()
     
-    print("✅ Veritabanı hazır (Günlük + 15dk + Aktif Sinyal + Performans)")
+    print("✅ Veritabanı hazır (Günlük + 15dk + Aktif Sinyal + Performans + BIST Trend)")
 
 
 def save_price_data(symbol, date, open_price, high, low, close, volume):
@@ -351,14 +361,11 @@ def get_signal_stats(days=7):
 
 
 # ════════════════════════════════════════════════════════════
-# 🆕 PERFORMANS FONKSİYONLARI
+# PERFORMANS FONKSİYONLARI
 # ════════════════════════════════════════════════════════════
 
 def get_today_signals_summary():
-    """
-    BUGÜN verilen sinyallerin özet istatistikleri
-    signals tablosundan bugünkü kayıtlar
-    """
+    """BUGÜN verilen sinyallerin özet istatistikleri"""
     conn = get_connection()
     cursor = conn.cursor()
     try:
@@ -382,11 +389,7 @@ def get_today_signals_summary():
 
 
 def get_today_signal_details():
-    """
-    BUGÜN verilen sinyallerin detaylı listesi
-    Her sinyal için: sembol, giriş fiyatı, skor, saat
-    Aynı sembolü birden fazla gösterme (en yüksek skorlu olanı al)
-    """
+    """BUGÜN verilen sinyallerin detaylı listesi"""
     conn = get_connection()
     cursor = conn.cursor()
     try:
@@ -416,23 +419,18 @@ def get_today_signal_details():
 
 
 def get_performance_summary(days=7):
-    """
-    GENEL PERFORMANS ÖZETİ
-    Kapanmış sinyaller + aktif sinyaller birleşik
-    """
+    """GENEL PERFORMANS ÖZETİ"""
     conn = get_connection()
     cursor = conn.cursor()
     try:
         result = {}
         
-        # 1. Bugünkü aktif sinyaller
         cursor.execute("""
             SELECT COUNT(*) as count FROM active_signals
             WHERE status = 'active'
         """)
         result['active_count'] = cursor.fetchone()['count']
         
-        # 2. Son N günde kapanan sinyaller
         cursor.execute("""
             SELECT 
                 COUNT(*) as total_closed,
@@ -455,17 +453,14 @@ def get_performance_summary(days=7):
         closed = dict(cursor.fetchone())
         result.update(closed)
         
-        # Win rate
         total_closed = closed.get('total_closed') or 0
         wins = closed.get('wins') or 0
         result['win_rate'] = round((wins / total_closed * 100), 1) if total_closed > 0 else 0
         
-        # Profit factor
         total_profit = abs(closed.get('total_profit') or 0)
         total_loss = abs(closed.get('total_loss') or 0)
         result['profit_factor'] = round(total_profit / total_loss, 2) if total_loss > 0 else 0
         
-        # 3. Bugün verilen sinyal sayısı
         cursor.execute("""
             SELECT COUNT(DISTINCT symbol) as today_sent
             FROM signals
@@ -479,6 +474,90 @@ def get_performance_summary(days=7):
         return None
     finally:
         conn.close()
+
+
+# ════════════════════════════════════════════════════════════
+# 🆕 BIST 100 TREND HAFIZASI
+# ════════════════════════════════════════════════════════════
+
+def save_bist_trend(trend_status):
+    """BIST 100 trend durumunu kaydet"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS bist_trend_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                trend TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("INSERT INTO bist_trend_history (trend) VALUES (?)", (trend_status,))
+        conn.commit()
+    except Exception as e:
+        print(f"❌ BIST trend kaydetme hatası: {e}")
+    finally:
+        conn.close()
+
+
+def get_last_bist_trend():
+    """Önceki BIST trend durumunu al (karşılaştırma için)"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS bist_trend_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                trend TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("""
+            SELECT trend FROM bist_trend_history 
+            ORDER BY created_at DESC 
+            LIMIT 1 OFFSET 1
+        """)
+        result = cursor.fetchone()
+        return result['trend'] if result else None
+    except Exception as e:
+        print(f"❌ BIST trend okuma hatası: {e}")
+        return None
+    finally:
+        conn.close()
+
+
+def detect_bist_trend_change(current_trend):
+    """
+    BIST trend değişimi tespit et
+    Returns: (changed, old_trend, direction)
+    """
+    last_trend = get_last_bist_trend()
+    
+    if last_trend is None:
+        return False, None, None
+    
+    if last_trend == current_trend:
+        return False, last_trend, None
+    
+    bullish_trends = ["GÜÇLÜ BOĞA", "BOĞA"]
+    bearish_trends = ["AYI", "GÜÇLÜ AYI"]
+    
+    if last_trend in bearish_trends and current_trend in bullish_trends:
+        direction = "AYI_TO_BOGA"
+    elif last_trend in bullish_trends and current_trend in bearish_trends:
+        direction = "BOGA_TO_AYI"
+    elif last_trend == "GÜÇLÜ AYI" and current_trend == "AYI":
+        direction = "AYI_IYILESIYOR"
+    elif last_trend == "AYI" and current_trend == "GÜÇLÜ AYI":
+        direction = "AYI_KOTULESIYOR"
+    elif last_trend == "BOĞA" and current_trend == "GÜÇLÜ BOĞA":
+        direction = "BOGA_GUCLENIYOR"
+    elif last_trend == "GÜÇLÜ BOĞA" and current_trend == "BOĞA":
+        direction = "BOGA_ZAYIFLIYOR"
+    else:
+        direction = "GENEL_DEGISIM"
+    
+    return True, last_trend, direction
 
 
 # ════════════════════════════════════════════════════════════
