@@ -1,7 +1,7 @@
 """
 Profesyonel Zamanlayıcı - SON HAL
 GÜNLÜK + SAATLİK (3 TEYİT) + 4 SAATLİK + BIST 100 FİBONACCİ
-+ 20/50 GERÇEK KESİŞİM (%1 fark) + PERFORMANS
++ 20/50 GERÇEK KESİŞİM + PERFORMANS + HAFTALIK RAPOR
 """
 
 import sys
@@ -342,7 +342,6 @@ def format_bist100_analysis(bist):
     if bist['momentum_detail']: msg += f"   <i>{bist['momentum_detail']}</i>\n"
     msg += "\n"
     
-    # FİBONACCİ DESTEK/DİRENÇ
     fib = bist.get('fibonacci')
     if fib:
         price = bist['price']
@@ -386,17 +385,12 @@ def format_bist100_analysis(bist):
     
     msg += "📊📊📊━━━━━━━━━━━━━━━━━📊📊📊\n\n"
     return msg
-
-
-# ════════════════════════════════════════════════════════════
-# 🌟 20/50 KESİŞEN HİSSELER (GERÇEK KESİŞİM - %1 FARK FİLTRESİ)
+    # ════════════════════════════════════════════════════════════
+# 20/50 KESİŞEN HİSSELER (GERÇEK KESİŞİM - %1 FARK)
 # ════════════════════════════════════════════════════════════
 
 def find_20_50_crossovers():
-    """
-    Bugün EMA 20/50 GERÇEK yukarı kesişimi olan hisseleri bul
-    Filtre: Kesişim + EMA20/EMA50 arası fark >= %1
-    """
+    """Bugün EMA 20/50 GERÇEK yukarı kesişimi olan hisseleri bul"""
     try:
         from database import get_stock_history
         from services.analyzer import analyze_stock
@@ -427,7 +421,6 @@ def find_20_50_crossovers():
                 if not all(v is not None for v in [e20, e50, pe20, pe50]):
                     continue
                 
-                # 🆕 GERÇEK KESİŞİM KONTROLÜ (%1 fark)
                 is_real, gap = is_real_20_50_crossover(e20, e50, pe20, pe50, min_gap_pct=1.0)
                 
                 if is_real:
@@ -446,7 +439,7 @@ def find_20_50_crossovers():
                             'price': current,
                             'ema_20': e20,
                             'ema_50': e50,
-                            'gap_pct': gap,  # 🆕 Fark yüzdesi
+                            'gap_pct': gap,
                             'daily_change': daily_change,
                             'rvol': rvol,
                             'rsi': rsi,
@@ -455,7 +448,6 @@ def find_20_50_crossovers():
             except:
                 continue
         
-        # Fark yüzdesine göre sırala (en yüksek fark = en güçlü kesişim)
         crossovers.sort(key=lambda x: (x['gap_pct'], x['rvol']), reverse=True)
         
         log_event(f"🌟 {len(crossovers)} hissede GERÇEK 20/50 kesişimi bulundu")
@@ -496,7 +488,9 @@ def format_20_50_crossovers_report(crossovers):
     msg += "⚠️ <i>Yarın açılışta durumlar değişebilir - kontrol et!</i>\n\n"
     
     return msg
-    # ════════════════════════════════════════════════════════════
+
+
+# ════════════════════════════════════════════════════════════
 # PERFORMANS RAPORU
 # ════════════════════════════════════════════════════════════
 
@@ -660,7 +654,315 @@ def format_performance_report():
 
 
 # ════════════════════════════════════════════════════════════
-# GÜN SONU RAPORU (BIST 100 FIB + PERFORMANS + 20/50 KESİŞİM + HİSSELER)
+# 🆕 HAFTALIK RAPOR (CUMARTESİ 10:00)
+# ════════════════════════════════════════════════════════════
+
+def job_weekly_report():
+    """
+    Haftalık rapor - Cumartesi 10:00'da çalışır
+    Son 7 günün tam analizi
+    """
+    log_event("📊 HAFTALIK RAPOR HAZIRLANIYOR")
+    
+    try:
+        from database import (
+            get_performance_summary, 
+            get_active_signals, 
+            get_connection
+        )
+        import yfinance as yf
+        
+        send_message(f"""📊 <b>HAFTALIK RAPOR HAZIRLANIYOR</b>
+━━━━━━━━━━━━━━━━━━━━━━━
+⏰ {tr_now().strftime('%H:%M - %d.%m.%Y')}
+📊 Son 7 gün analiz ediliyor...
+<i>1-2 dakika sürebilir</i>""")
+        
+        # ═══════════════════════════════════════
+        # 1. GENEL İSTATİSTİKLER (Son 7 gün)
+        # ═══════════════════════════════════════
+        conn = get_connection()
+        cursor = conn.cursor()
+        
+        # Bu hafta gönderilen sinyaller
+        cursor.execute("""
+            SELECT 
+                COUNT(*) as total_sent,
+                COUNT(DISTINCT symbol) as unique_symbols,
+                AVG(score) as avg_score,
+                MAX(score) as max_score
+            FROM signals
+            WHERE created_at >= datetime('now', '-7 days')
+        """)
+        weekly_signals = dict(cursor.fetchone())
+        
+        conn.close()
+        
+        # ═══════════════════════════════════════
+        # 2. HAFTALIK PERFORMANS
+        # ═══════════════════════════════════════
+        perf = get_performance_summary(days=7)
+        
+        # ═══════════════════════════════════════
+        # 3. EN BAŞARILI 5 HİSSE (Son 7 gün)
+        # ═══════════════════════════════════════
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT 
+                symbol,
+                entry_price,
+                final_price,
+                final_pnl_pct,
+                target_1_hit,
+                target_2_hit,
+                target_3_hit,
+                stop_hit
+            FROM active_signals
+            WHERE created_at >= datetime('now', '-7 days')
+            AND status != 'active'
+            AND final_pnl_pct > 0
+            ORDER BY final_pnl_pct DESC
+            LIMIT 5
+        """)
+        top_winners = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+        
+        # ═══════════════════════════════════════
+        # 4. AKTİF TAKİPTEKİ HİSSELER
+        # ═══════════════════════════════════════
+        active_signals = get_active_signals()
+        
+        # ═══════════════════════════════════════
+        # 5. PAZARTESİ İZLENECEK (Son 5 gün en yüksek skorlu)
+        # ═══════════════════════════════════════
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT 
+                symbol,
+                MAX(score) as max_score,
+                MAX(price) as last_price
+            FROM signals
+            WHERE created_at >= datetime('now', '-5 days')
+            GROUP BY symbol
+            ORDER BY MAX(score) DESC
+            LIMIT 5
+        """)
+        monday_watchlist = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+        
+        # ═══════════════════════════════════════
+        # 6. MESAJI OLUŞTUR
+        # ═══════════════════════════════════════
+        
+        # Hafta tarihi
+        today = tr_now()
+        week_start = today - timedelta(days=7)
+        week_str = f"{week_start.strftime('%d %b')} - {today.strftime('%d %b %Y')}"
+        
+        msg = "📊📊📊━━━━━━━━━━━━━━━━━📊📊📊\n"
+        msg += "     <b>🗓️ HAFTALIK BOT RAPORU</b>\n"
+        msg += "📊📊📊━━━━━━━━━━━━━━━━━📊📊📊\n\n"
+        msg += f"📅 <b>Hafta:</b> {week_str}\n\n"
+        
+        # GENEL İSTATİSTİKLER
+        msg += "━━━━━━━━━━━━━━━━━━━━━━━\n"
+        msg += "📈 <b>GENEL İSTATİSTİKLER</b>\n"
+        msg += "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        
+        if weekly_signals.get('total_sent'):
+            msg += f"📌 Toplam sinyal: <b>{weekly_signals['total_sent']}</b>\n"
+            msg += f"📌 Farklı hisse: <b>{weekly_signals['unique_symbols']}</b>\n"
+            msg += f"📌 Ort. skor: <b>{weekly_signals.get('avg_score', 0):.0f}</b>\n"
+            msg += f"📌 En yüksek: <b>{weekly_signals.get('max_score', 0)}</b>\n\n"
+        else:
+            msg += "<i>Bu hafta sinyal verilmedi</i>\n\n"
+        
+        # SONUÇLAR
+        if perf and perf.get('total_closed', 0) > 0:
+            msg += "━━━━━━━━━━━━━━━━━━━━━━━\n"
+            msg += "💰 <b>KAPANAN POZİSYONLAR</b>\n"
+            msg += "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            
+            total_closed = perf['total_closed']
+            wins = perf.get('wins', 0)
+            losses = perf.get('losses', 0)
+            
+            msg += f"📊 Kapanan: <b>{total_closed}</b>\n"
+            msg += f"🟢 Kazanan: <b>{wins}</b>\n"
+            msg += f"🔴 Kaybeden: <b>{losses}</b>\n\n"
+            
+            msg += f"🎯 Hedef 1: <b>{perf.get('t1_hit', 0)}</b>\n"
+            msg += f"🎯 Hedef 2: <b>{perf.get('t2_hit', 0)}</b>\n"
+            msg += f"🎯 Hedef 3: <b>{perf.get('t3_hit', 0)}</b>\n"
+            msg += f"🛑 Stop: <b>{perf.get('stopped', 0)}</b>\n\n"
+            
+            msg += "━━━━━━━━━━━━━━━━━━━━━━━\n"
+            msg += "🏆 <b>PERFORMANS</b>\n"
+            msg += "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            
+            win_rate = perf['win_rate']
+            
+            # Win Rate emoji
+            if win_rate >= 70: wr_emoji = "🏆"
+            elif win_rate >= 60: wr_emoji = "✅"
+            elif win_rate >= 50: wr_emoji = "🟡"
+            else: wr_emoji = "🔴"
+            
+            msg += f"{wr_emoji} <b>WIN RATE: %{win_rate}</b>\n\n"
+            
+            avg_pnl = perf.get('avg_pnl')
+            if avg_pnl is not None:
+                pnl_emoji = "🟢" if avg_pnl > 0 else "🔴"
+                msg += f"{pnl_emoji} Ortalama K/Z: <b>{avg_pnl:+.2f}%</b>\n"
+            
+            best = perf.get('best_trade')
+            worst = perf.get('worst_trade')
+            if best is not None: msg += f"🏆 En iyi: <b>+{best:.2f}%</b>\n"
+            if worst is not None: msg += f"📉 En kötü: <b>{worst:.2f}%</b>\n"
+            
+            pf = perf.get('profit_factor', 0)
+            if pf > 0:
+                pf_emoji = "💎" if pf >= 2 else "✅" if pf >= 1.5 else "⚠️"
+                msg += f"{pf_emoji} Profit Factor: <b>{pf}</b>\n"
+            
+            msg += "\n"
+        else:
+            msg += "━━━━━━━━━━━━━━━━━━━━━━━\n"
+            msg += "💰 <b>KAPANAN POZİSYONLAR</b>\n"
+            msg += "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            msg += "<i>Bu hafta kapanmış pozisyon yok</i>\n\n"
+        
+        # EN BAŞARILI HİSSELER
+        if top_winners:
+            msg += "🏆🏆🏆━━━━━━━━━━━━━━━━━🏆🏆🏆\n"
+            msg += "   <b>EN BAŞARILI 5 HİSSE</b>\n"
+            msg += "🏆🏆🏆━━━━━━━━━━━━━━━━━🏆🏆🏆\n\n"
+            
+            for i, w in enumerate(top_winners, 1):
+                medal = {1:'🥇', 2:'🥈', 3:'🥉', 4:'🏅', 5:'🎖️'}.get(i, f"{i}.")
+                symbol = w['symbol']
+                pnl = w['final_pnl_pct']
+                entry = w['entry_price']
+                exit_p = w['final_price']
+                
+                # Hangi hedef vuruldu
+                if w.get('target_3_hit'):
+                    target_info = "🎯 H3 vurdu"
+                elif w.get('target_2_hit'):
+                    target_info = "🎯 H2 vurdu"
+                elif w.get('target_1_hit'):
+                    target_info = "🎯 H1 vurdu"
+                else:
+                    target_info = ""
+                
+                msg += f"{medal} <b>{symbol}</b> <b>+{pnl:.2f}%</b>\n"
+                msg += f"   📥 {entry:.2f} → 💰 {exit_p:.2f}\n"
+                if target_info:
+                    msg += f"   {target_info}\n"
+                msg += "\n"
+        
+        # AKTİF TAKİPTEKİ HİSSELER
+        if active_signals:
+            msg += "━━━━━━━━━━━━━━━━━━━━━━━\n"
+            msg += f"📌 <b>HALA AKTİF TAKİPTE ({len(active_signals)})</b>\n"
+            msg += "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            
+            for s in active_signals[:10]:
+                symbol = s['symbol']
+                entry = s['entry_price']
+                t1 = s['target_1']
+                t2 = s['target_2']
+                stop = s['stop_loss']
+                
+                current_price = None
+                try:
+                    ticker = yf.Ticker(f"{symbol}.IS")
+                    info = ticker.history(period="1d")
+                    if not info.empty:
+                        current_price = float(info['Close'].iloc[-1])
+                except:
+                    pass
+                
+                if current_price:
+                    pnl = ((current_price - entry) / entry) * 100
+                    
+                    if s.get('target_2_hit'):
+                        emoji = "🎯🎯"
+                    elif s.get('target_1_hit'):
+                        emoji = "🎯"
+                    elif pnl >= 3:
+                        emoji = "🟢"
+                    elif pnl >= 0:
+                        emoji = "🟡"
+                    else:
+                        emoji = "🔴"
+                    
+                    msg += f"{emoji} <b>{symbol}</b>\n"
+                    msg += f"   📥 {entry:.2f} → 💰 {current_price:.2f} (<b>{pnl:+.2f}%</b>)\n"
+                    msg += f"   🎯 H1: {t1:.2f} | H2: {t2:.2f} | 🛑 {stop:.2f}\n\n"
+                else:
+                    msg += f"⚪ <b>{symbol}</b>\n"
+                    msg += f"   📥 {entry:.2f} → fiyat alınamadı\n\n"
+            
+            if len(active_signals) > 10:
+                msg += f"<i>+{len(active_signals)-10} sinyal daha aktif</i>\n\n"
+        
+        # PAZARTESİ İZLENECEK
+        if monday_watchlist:
+            msg += "🎯🎯🎯━━━━━━━━━━━━━━━━━🎯🎯🎯\n"
+            msg += "   <b>PAZARTESİ İZLENECEK 5 HİSSE</b>\n"
+            msg += "🎯🎯🎯━━━━━━━━━━━━━━━━━🎯🎯🎯\n\n"
+            msg += "📊 <i>Son 5 gün en güçlü sinyal veren hisseler</i>\n\n"
+            
+            for i, w in enumerate(monday_watchlist, 1):
+                medal = {1:'🥇', 2:'🥈', 3:'🥉', 4:'🏅', 5:'🎖️'}.get(i, f"{i}.")
+                msg += f"{medal} <b>{w['symbol']}</b> (Skor: {w['max_score']})\n"
+                msg += f"   Son fiyat: {w['last_price']:.2f} TL\n\n"
+        
+        # BOT DEĞERLENDİRMESİ
+        msg += "━━━━━━━━━━━━━━━━━━━━━━━\n"
+        msg += "📊 <b>BOT DEĞERLENDİRMESİ</b>\n"
+        msg += "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        
+        if perf and perf.get('total_closed', 0) > 0:
+            win_rate = perf['win_rate']
+            avg_pnl = perf.get('avg_pnl', 0)
+            pf = perf.get('profit_factor', 0)
+            
+            if win_rate >= 70 and avg_pnl > 3:
+                msg += "🏆 <b>MÜKEMMEL HAFTA!</b>\n"
+                msg += "✅ Bot çok iyi performans gösterdi\n"
+                msg += "✅ Aynı stratejiyle devam et\n\n"
+            elif win_rate >= 60:
+                msg += "✅ <b>İYİ HAFTA</b>\n"
+                msg += "✅ Ortalama üstü performans\n"
+                msg += "✅ Bot sağlıklı çalışıyor\n\n"
+            elif win_rate >= 50:
+                msg += "🟡 <b>ORTA HAFTA</b>\n"
+                msg += "⚠️ Dikkatli takip et\n"
+                msg += "⚠️ Piyasa koşullarını değerlendir\n\n"
+            else:
+                msg += "🔴 <b>ZAYIF HAFTA</b>\n"
+                msg += "⚠️ Bot yetersiz performans gösterdi\n"
+                msg += "⚠️ Piyasa koşulları zor olabilir\n"
+                msg += "⚠️ Küçük pozisyonlarla devam et\n\n"
+        else:
+            msg += "<i>Değerlendirme için yeterli veri yok</i>\n\n"
+        
+        msg += "━━━━━━━━━━━━━━━━━━━━━━━\n"
+        msg += "💡 <i>Pazartesi 09:45'te bot tekrar başlıyor</i>\n"
+        msg += "🌅 <i>İyi hafta sonları!</i>\n"
+        msg += "💰 <i>Bir sonraki haftaya hazır ol!</i>"
+        
+        send_message(msg)
+        log_event("✅ Haftalık rapor gönderildi")
+    except Exception as e:
+        log_event(f"❌ Haftalık rapor hatası: {e}")
+        send_message(f"❌ <b>Haftalık rapor hatası</b>\n<code>{str(e)[:200]}</code>")
+        # ════════════════════════════════════════════════════════════
+# GÜN SONU RAPORU
 # ════════════════════════════════════════════════════════════
 
 def job_end_of_day_report():
@@ -896,6 +1198,7 @@ def setup_scheduler():
     scheduler.add_job(job_full_scan, CronTrigger(minute=0, hour='11-17', day_of_week='mon-fri'), id='full')
     scheduler.add_job(job_4h_scan, CronTrigger(hour=14, minute=15, day_of_week='mon-fri'), id='4h_scan')
     scheduler.add_job(job_end_of_day_report, CronTrigger(hour=18, minute=30, day_of_week='mon-fri'), id='eod')
+    scheduler.add_job(job_weekly_report, CronTrigger(hour=10, minute=0, day_of_week='sat'), id='weekly')  # 🆕
     return scheduler
 
 def start_scheduler():
@@ -909,7 +1212,7 @@ def start_scheduler():
 if __name__ == "__main__":
     print(f"\n⏰ ZAMANLAYICI - {tr_now().strftime('%H:%M')}")
     print("1→Başlat 2→Sabah 3→PreMarket 4→Açılış 5→Hızlı")
-    print("6→Tam 7→4H Tarama 8→GünSonu 9→Tam+Saatlik+Takip 10→Saatlik")
+    print("6→Tam 7→4H Tarama 8→GünSonu 9→Tam+Saatlik+Takip 10→Saatlik 11→HaftalıkRapor")
     
     c = input("\nSeçim: ").strip()
     if c=="1": start_scheduler()
@@ -922,3 +1225,4 @@ if __name__ == "__main__":
     elif c=="8": job_end_of_day_report()
     elif c=="9": job_full_scan_with_tracking()
     elif c=="10": job_hourly_scan()
+    elif c=="11": job_weekly_report()
