@@ -1,7 +1,6 @@
 """
 Profesyonel Zamanlayıcı - SON HAL
-GÜNLÜK + SAATLİK (3 TEYİT) + 4 SAATLİK + BIST 100 FİBONACCİ
-+ 20/50 GERÇEK KESİŞİM + PERFORMANS + HAFTALIK RAPOR
+Saatlik zaman kısıtı (11:00-17:00) + BIST 100 filtre + Haftalık rapor + Fibonacci
 """
 
 import sys
@@ -45,7 +44,7 @@ def job_morning_preparation():
         fetch_all_daily(symbols_list=BIST_SYMBOLS, delay=0.05)
         send_message(f"""✅ <b>SABAH HAZIRLIK TAMAM</b>
 ✅ Veriler güncellendi
-🚀 İlk tarama: <b>10:35</b>
+🚀 İlk tarama: <b>10:15</b>
 <i>Bugün güzel kazançlar 💪</i>""")
     except Exception as e:
         send_message(f"❌ <b>Hata</b>\n<code>{str(e)[:200]}</code>")
@@ -118,8 +117,28 @@ def job_full_scan():
         send_message(f"❌ <b>Hata</b>\n<code>{str(e)[:200]}</code>")
 
 
+# ════════════════════════════════════════════════════════════
+# 🆕 SAATLİK TARAMA (ZAMAN KISITI: 11:00-17:00)
+# ════════════════════════════════════════════════════════════
+
 def job_hourly_scan():
-    log_event("⚡ SAATLİK TARAMA (3 TEYİT)")
+    """
+    SAATLİK TARAMA
+    - Zaman kısıtı: 11:00-17:00 arası çalışır
+    - 11:00 öncesi ve 17:00 sonrası atlanır
+    """
+    current_hour = tr_now().hour
+    
+    # 🆕 ZAMAN KISITI KONTROLÜ
+    if current_hour < 11:
+        log_event(f"⏭️ SAATLİK ATLANDI - Saat {current_hour}:00 (11:00 öncesi)")
+        return
+    
+    if current_hour > 17:
+        log_event(f"⏭️ SAATLİK ATLANDI - Saat {current_hour}:00 (17:00 sonrası)")
+        return
+    
+    log_event(f"⚡ SAATLİK TARAMA (Saat: {current_hour}:00)")
     try:
         from telegram_bot.bot import send_hourly_signals
         hourly_signals = scan_hourly_stocks(min_score=68, symbols_list=BIST_SYMBOLS[:200])
@@ -654,14 +673,11 @@ def format_performance_report():
 
 
 # ════════════════════════════════════════════════════════════
-# 🆕 HAFTALIK RAPOR (CUMARTESİ 10:00)
+# HAFTALIK RAPOR (CUMARTESİ 10:00)
 # ════════════════════════════════════════════════════════════
 
 def job_weekly_report():
-    """
-    Haftalık rapor - Cumartesi 10:00'da çalışır
-    Son 7 günün tam analizi
-    """
+    """Haftalık rapor - Cumartesi 10:00"""
     log_event("📊 HAFTALIK RAPOR HAZIRLANIYOR")
     
     try:
@@ -678,13 +694,9 @@ def job_weekly_report():
 📊 Son 7 gün analiz ediliyor...
 <i>1-2 dakika sürebilir</i>""")
         
-        # ═══════════════════════════════════════
-        # 1. GENEL İSTATİSTİKLER (Son 7 gün)
-        # ═══════════════════════════════════════
         conn = get_connection()
         cursor = conn.cursor()
         
-        # Bu hafta gönderilen sinyaller
         cursor.execute("""
             SELECT 
                 COUNT(*) as total_sent,
@@ -698,14 +710,8 @@ def job_weekly_report():
         
         conn.close()
         
-        # ═══════════════════════════════════════
-        # 2. HAFTALIK PERFORMANS
-        # ═══════════════════════════════════════
         perf = get_performance_summary(days=7)
         
-        # ═══════════════════════════════════════
-        # 3. EN BAŞARILI 5 HİSSE (Son 7 gün)
-        # ═══════════════════════════════════════
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute("""
@@ -728,14 +734,8 @@ def job_weekly_report():
         top_winners = [dict(row) for row in cursor.fetchall()]
         conn.close()
         
-        # ═══════════════════════════════════════
-        # 4. AKTİF TAKİPTEKİ HİSSELER
-        # ═══════════════════════════════════════
         active_signals = get_active_signals()
         
-        # ═══════════════════════════════════════
-        # 5. PAZARTESİ İZLENECEK (Son 5 gün en yüksek skorlu)
-        # ═══════════════════════════════════════
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute("""
@@ -752,11 +752,6 @@ def job_weekly_report():
         monday_watchlist = [dict(row) for row in cursor.fetchall()]
         conn.close()
         
-        # ═══════════════════════════════════════
-        # 6. MESAJI OLUŞTUR
-        # ═══════════════════════════════════════
-        
-        # Hafta tarihi
         today = tr_now()
         week_start = today - timedelta(days=7)
         week_str = f"{week_start.strftime('%d %b')} - {today.strftime('%d %b %Y')}"
@@ -766,7 +761,6 @@ def job_weekly_report():
         msg += "📊📊📊━━━━━━━━━━━━━━━━━📊📊📊\n\n"
         msg += f"📅 <b>Hafta:</b> {week_str}\n\n"
         
-        # GENEL İSTATİSTİKLER
         msg += "━━━━━━━━━━━━━━━━━━━━━━━\n"
         msg += "📈 <b>GENEL İSTATİSTİKLER</b>\n"
         msg += "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -779,7 +773,6 @@ def job_weekly_report():
         else:
             msg += "<i>Bu hafta sinyal verilmedi</i>\n\n"
         
-        # SONUÇLAR
         if perf and perf.get('total_closed', 0) > 0:
             msg += "━━━━━━━━━━━━━━━━━━━━━━━\n"
             msg += "💰 <b>KAPANAN POZİSYONLAR</b>\n"
@@ -804,7 +797,6 @@ def job_weekly_report():
             
             win_rate = perf['win_rate']
             
-            # Win Rate emoji
             if win_rate >= 70: wr_emoji = "🏆"
             elif win_rate >= 60: wr_emoji = "✅"
             elif win_rate >= 50: wr_emoji = "🟡"
@@ -834,7 +826,6 @@ def job_weekly_report():
             msg += "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
             msg += "<i>Bu hafta kapanmış pozisyon yok</i>\n\n"
         
-        # EN BAŞARILI HİSSELER
         if top_winners:
             msg += "🏆🏆🏆━━━━━━━━━━━━━━━━━🏆🏆🏆\n"
             msg += "   <b>EN BAŞARILI 5 HİSSE</b>\n"
@@ -847,7 +838,6 @@ def job_weekly_report():
                 entry = w['entry_price']
                 exit_p = w['final_price']
                 
-                # Hangi hedef vuruldu
                 if w.get('target_3_hit'):
                     target_info = "🎯 H3 vurdu"
                 elif w.get('target_2_hit'):
@@ -863,7 +853,6 @@ def job_weekly_report():
                     msg += f"   {target_info}\n"
                 msg += "\n"
         
-        # AKTİF TAKİPTEKİ HİSSELER
         if active_signals:
             msg += "━━━━━━━━━━━━━━━━━━━━━━━\n"
             msg += f"📌 <b>HALA AKTİF TAKİPTE ({len(active_signals)})</b>\n"
@@ -909,7 +898,6 @@ def job_weekly_report():
             if len(active_signals) > 10:
                 msg += f"<i>+{len(active_signals)-10} sinyal daha aktif</i>\n\n"
         
-        # PAZARTESİ İZLENECEK
         if monday_watchlist:
             msg += "🎯🎯🎯━━━━━━━━━━━━━━━━━🎯🎯🎯\n"
             msg += "   <b>PAZARTESİ İZLENECEK 5 HİSSE</b>\n"
@@ -921,7 +909,6 @@ def job_weekly_report():
                 msg += f"{medal} <b>{w['symbol']}</b> (Skor: {w['max_score']})\n"
                 msg += f"   Son fiyat: {w['last_price']:.2f} TL\n\n"
         
-        # BOT DEĞERLENDİRMESİ
         msg += "━━━━━━━━━━━━━━━━━━━━━━━\n"
         msg += "📊 <b>BOT DEĞERLENDİRMESİ</b>\n"
         msg += "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -929,7 +916,6 @@ def job_weekly_report():
         if perf and perf.get('total_closed', 0) > 0:
             win_rate = perf['win_rate']
             avg_pnl = perf.get('avg_pnl', 0)
-            pf = perf.get('profit_factor', 0)
             
             if win_rate >= 70 and avg_pnl > 3:
                 msg += "🏆 <b>MÜKEMMEL HAFTA!</b>\n"
@@ -988,7 +974,7 @@ def job_end_of_day_report():
         perf_msg = format_performance_report()
         send_message(perf_msg)
         
-        # MESAJ 3: 20/50 KESİŞEN HİSSELER (GERÇEK KESİŞİM)
+        # MESAJ 3: 20/50 KESİŞEN HİSSELER
         crossovers = find_20_50_crossovers()
         if crossovers:
             crossover_msg = format_20_50_crossovers_report(crossovers)
@@ -1193,12 +1179,12 @@ def setup_scheduler():
     scheduler = BlockingScheduler(timezone='Europe/Istanbul')
     scheduler.add_job(job_morning_preparation, CronTrigger(hour=9, minute=45, day_of_week='mon-fri'), id='morning')
     scheduler.add_job(job_premarket_report, CronTrigger(hour=9, minute=55, day_of_week='mon-fri'), id='premarket')
-    scheduler.add_job(job_market_open_scan, CronTrigger(hour=10, minute=35, day_of_week='mon-fri'), id='open')
+    scheduler.add_job(job_market_open_scan, CronTrigger(hour=10, minute=15, day_of_week='mon-fri'), id='open')
     scheduler.add_job(job_quick_scan, CronTrigger(minute='30,45', hour='10-17', day_of_week='mon-fri'), id='quick')
     scheduler.add_job(job_full_scan, CronTrigger(minute=0, hour='11-17', day_of_week='mon-fri'), id='full')
     scheduler.add_job(job_4h_scan, CronTrigger(hour=14, minute=15, day_of_week='mon-fri'), id='4h_scan')
     scheduler.add_job(job_end_of_day_report, CronTrigger(hour=18, minute=30, day_of_week='mon-fri'), id='eod')
-    scheduler.add_job(job_weekly_report, CronTrigger(hour=10, minute=0, day_of_week='sat'), id='weekly')  # 🆕
+    scheduler.add_job(job_weekly_report, CronTrigger(hour=10, minute=0, day_of_week='sat'), id='weekly')
     return scheduler
 
 def start_scheduler():
