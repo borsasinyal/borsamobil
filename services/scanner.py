@@ -1,6 +1,6 @@
 """
 Profesyonel Tarama Motoru - SON HAL
-BIST 100 GENEL FİLTRE + SAATLİK BIST 100 FİLTRE + SAATLİK DİP DÖNÜŞÜ + AKILLI SPAM
+BIST 100 FİLTRE (Günlük + Saatlik + 4H) + SAATLİK DİP DÖNÜŞÜ + AKILLI SPAM
 """
 
 import sys
@@ -27,11 +27,14 @@ from services.signal_engine import generate_signal, format_signal_message
 # BIST 100 GENEL PİYASA KONTROLÜ
 # ════════════════════════════════════════════════════════════
 
-def get_bist100_market_mode(for_hourly=False):
+def get_bist100_market_mode(timeframe='daily'):
     """
     BIST 100 durumunu kontrol et, dinamik min_score döndür
     
-    for_hourly: True ise saatlik tarama için daha sıkı skorlar döner
+    timeframe:
+    - 'daily' → Günlük tarama skorları
+    - 'hourly' → Saatlik tarama skorları (daha sıkı)
+    - '4h' → 4 Saatlik tarama skorları (orta seviye)
     """
     try:
         import yfinance as yf
@@ -56,46 +59,60 @@ def get_bist100_market_mode(for_hourly=False):
         ema20 = float(ema20_series.iloc[-1])
         ema50 = float(ema50_series.iloc[-1])
         
+        # 🆕 3 farklı zaman dilimi için ayrı skor tablosu
+        def get_min_score(trend, tf):
+            """Zaman dilimine ve BIST trendine göre min skor"""
+            scores = {
+                'daily': {
+                    'GÜÇLÜ BOĞA': 60, 'BOĞA': 60, 'POZİTİF': 65,
+                    'YATAY': 70, 'AYI': 78, 'GÜÇLÜ AYI': 85
+                },
+                'hourly': {
+                    'GÜÇLÜ BOĞA': 68, 'BOĞA': 68, 'POZİTİF': 72,
+                    'YATAY': 75, 'AYI': 78, 'GÜÇLÜ AYI': 80
+                },
+                '4h': {
+                    'GÜÇLÜ BOĞA': 65, 'BOĞA': 65, 'POZİTİF': 68,
+                    'YATAY': 72, 'AYI': 75, 'GÜÇLÜ AYI': 80
+                }
+            }
+            return scores.get(tf, scores['daily']).get(trend, 65)
+        
         # Trend tespiti
         if price > ema20 > ema50:
             trend = "GÜÇLÜ BOĞA"
-            min_score = 68 if for_hourly else 60
             emoji = "🚀"
             message = f"BIST 100 GÜÇLÜ! Fiyat({price:.0f}) > EMA20({ema20:.0f}) > EMA50({ema50:.0f})"
         elif price > ema50 and price > ema20:
             trend = "BOĞA"
-            min_score = 68 if for_hourly else 60
             emoji = "📈"
             message = f"BIST 100 pozitif. EMA20 ve EMA50 üzerinde"
         elif price > ema50:
             trend = "POZİTİF"
-            min_score = 72 if for_hourly else 65
             emoji = "✅"
             message = f"BIST 100 EMA50({ema50:.0f}) üzerinde, EMA20({ema20:.0f}) altında"
         elif price < ema50 and price > ema20:
             trend = "YATAY"
-            min_score = 75 if for_hourly else 70
             emoji = "➡️"
             message = f"BIST 100 kararsız. EMA50({ema50:.0f}) altında"
         elif price < ema20 and price < ema50:
             if ema20 < ema50:
                 trend = "GÜÇLÜ AYI"
-                min_score = 80 if for_hourly else 85
                 emoji = "☠️"
                 message = f"BIST 100 GÜÇLÜ AYI! Fiyat({price:.0f}) < EMA20({ema20:.0f}) < EMA50({ema50:.0f})"
             else:
                 trend = "AYI"
-                min_score = 78 if for_hourly else 78
                 emoji = "🔴"
                 message = f"BIST 100 AYI! Fiyat({price:.0f}) EMA20 ve EMA50 altında"
         else:
             trend = "YATAY"
-            min_score = 75 if for_hourly else 70
             emoji = "➡️"
             message = f"BIST 100 yatay hareket"
         
+        min_score = get_min_score(trend, timeframe)
+        
         # Trend değişimi kontrolü (sadece günlük tarama için)
-        if not for_hourly:
+        if timeframe == 'daily':
             changed, old_trend, direction = detect_bist_trend_change(trend)
             save_bist_trend(trend)
         else:
@@ -221,19 +238,12 @@ def has_rsi_reversal(analysis):
 
 
 # ════════════════════════════════════════════════════════════
-# 🆕 SAATLİK DİP DÖNÜŞÜ TESPİTİ
+# SAATLİK DİP DÖNÜŞÜ TESPİTİ
 # ════════════════════════════════════════════════════════════
 
 def detect_hourly_dip_reversal(analysis):
     """
     Saatlik verilerde dip dönüşü var mı kontrol et
-    
-    Kriterler:
-    1. Saatlik RSI < 35 VE yükseliyor
-    2. VEYA Saatlik WaveTrend dip dönüşü (WT < -50 ve yukarı dönüş)
-    
-    Returns:
-        (bool, str): (dip dönüşü var mı, açıklama)
     """
     rsi = analysis.get('rsi')
     prev_rsi = analysis.get('prev_rsi')
@@ -242,14 +252,11 @@ def detect_hourly_dip_reversal(analysis):
     prev_wt1 = analysis.get('prev_wt1')
     prev_wt2 = analysis.get('prev_wt2')
     
-    # 1. RSI DİP DÖNÜŞÜ
     if rsi and prev_rsi:
         if rsi < 35 and rsi > prev_rsi:
             return True, f"RSI dip dönüşü ({rsi:.1f}, yükseliyor)"
     
-    # 2. WAVETREND DİP DÖNÜŞÜ
     if all(v is not None for v in [wt1, wt2, prev_wt1, prev_wt2]):
-        # WT1 < -50 (dip bölgesi) VE yukarı kesişim
         if wt1 < -50 and prev_wt1 <= prev_wt2 and wt1 > wt2:
             return True, f"WaveTrend dip dönüşü (WT:{wt1:.1f})"
     
@@ -257,20 +264,14 @@ def detect_hourly_dip_reversal(analysis):
 
 
 # ════════════════════════════════════════════════════════════
-# 🆕 SAATLİK 3 TEYİT SİSTEMİ (DİP DÖNÜŞÜ İSTİSNASI DAHİL)
+# SAATLİK 3 TEYİT SİSTEMİ
 # ════════════════════════════════════════════════════════════
 
 def check_hourly_confirmations(symbol, hourly_analysis):
-    """
-    Saatlik sinyal için teyit kontrolü
-    
-    NORMAL: 3/3 teyit gerekli
-    DİP DÖNÜŞÜ: 2/3 teyit gerekli (Momentum + Hacim - günlük atlanır)
-    """
+    """Saatlik sinyal için teyit kontrolü"""
     details = []
     passed_count = 0
     
-    # 🆕 DİP DÖNÜŞÜ TESPİTİ
     is_dip_reversal, dip_reason = detect_hourly_dip_reversal(hourly_analysis)
     
     # TEYİT 1: Günlük trend pozitif (DİP DÖNÜŞÜNDE ATLA)
@@ -278,7 +279,6 @@ def check_hourly_confirmations(symbol, hourly_analysis):
     daily_detail = "Günlük veri yok"
     
     if not is_dip_reversal:
-        # Normal kontrol
         try:
             daily_data = get_stock_history(symbol, days=100)
             if daily_data and len(daily_data) >= 25:
@@ -301,7 +301,6 @@ def check_hourly_confirmations(symbol, hourly_analysis):
         details.append({'check': 'Günlük trend pozitif', 'passed': daily_positive, 'value': daily_detail})
         if daily_positive: passed_count += 1
     else:
-        # Dip dönüşü varsa bu teyit atlanır
         details.append({
             'check': '🎯 DİP DÖNÜŞÜ - Günlük atlandı',
             'passed': True,
@@ -344,9 +343,6 @@ def check_hourly_confirmations(symbol, hourly_analysis):
     details.append({'check': 'Hacim onayı (RVOL >= 1.5x)', 'passed': volume_ok, 'value': volume_detail})
     if volume_ok: passed_count += 1
     
-    # KURAL:
-    # - Dip dönüşü varsa: 3/3 geçmeli (ama teyit 1 otomatik geçti)
-    # - Normal: 3/3 geçmeli
     passed = (passed_count == 3)
     
     return {
@@ -455,7 +451,6 @@ def scan_single_stock(symbol, min_score=65, use_15m=False, use_hourly=False, use
             
             signal['hourly_confirmations'] = confirmations
             
-            # 🆕 DİP DÖNÜŞÜ FLAG'İ (Kart için)
             if confirmations.get('is_dip_reversal'):
                 signal['is_hourly_dip_reversal'] = True
                 signal['dip_reason'] = confirmations.get('dip_reason')
@@ -562,7 +557,7 @@ def apply_smart_spam_filter(signals, hours=4, min_score_improvement=10):
 
 
 # ════════════════════════════════════════════════════════════
-# TÜM BIST TARAMA (BIST 100 FİLTRESİ DAHİL)
+# 🆕 TÜM BIST TARAMA (BIST 100 FİLTRESİ - HER TARAMA İÇİN)
 # ════════════════════════════════════════════════════════════
 
 def scan_all_stocks(min_score=65, save_to_db=True, verbose=False, use_15m=False, use_hourly=False, use_4h=False, symbols_list=None, add_to_tracker=True, apply_spam_filter=True):
@@ -571,39 +566,38 @@ def scan_all_stocks(min_score=65, save_to_db=True, verbose=False, use_15m=False,
     
     if use_4h:
         timeframe = "4 SAATLİK"
+        bist_tf = '4h'
     elif use_hourly:
         timeframe = "SAATLİK (3 TEYİT)"
+        bist_tf = 'hourly'
     elif use_15m:
         timeframe = "15 DAKİKALIK"
+        bist_tf = 'daily'  # 15m için günlük skorlar
     else:
         timeframe = "GÜNLÜK"
+        bist_tf = 'daily'
     
-    # BIST 100 GENEL PİYASA KONTROLÜ
-    market_mode = None
-    effective_min_score = min_score
+    # 🆕 BIST 100 KONTROLÜ - HER TARAMA İÇİN (Günlük + Saatlik + 4H)
+    from telegram_bot.bot import send_message
     
-    # 🆕 GÜNLÜK VE SAATLİK için BIST 100 kontrolü yapılır
-    if not use_4h and (not use_hourly or use_hourly):
-        from telegram_bot.bot import send_message
-        
-        # Saatlik için ayrı skor tablosu
-        market_mode = get_bist100_market_mode(for_hourly=use_hourly)
-        
-        bist_min = market_mode['min_score']
-        effective_min_score = max(min_score, bist_min)
-        
-        print(f"\n{'='*60}")
-        print(f"📊 BIST 100 DURUMU: {market_mode['emoji']} {market_mode['trend']}")
-        print(f"📊 {market_mode['message']}")
-        print(f"📊 Normal min skor: {min_score} → Uygulanan: {effective_min_score}")
-        print(f"{'='*60}")
-        
-        # Trend değişimi uyarısı (sadece günlük)
-        if not use_hourly and market_mode.get('trend_changed'):
-            alert_msg = format_bist_trend_change_alert(market_mode)
-            if alert_msg:
-                send_message(alert_msg)
-                print(f"📢 BIST TREND DEĞİŞİMİ: {market_mode.get('old_trend')} → {market_mode['trend']}")
+    market_mode = get_bist100_market_mode(timeframe=bist_tf)
+    
+    bist_min = market_mode['min_score']
+    effective_min_score = max(min_score, bist_min)
+    
+    print(f"\n{'='*60}")
+    print(f"📊 BIST 100 DURUMU: {market_mode['emoji']} {market_mode['trend']}")
+    print(f"📊 {market_mode['message']}")
+    print(f"📊 Zaman dilimi: {timeframe}")
+    print(f"📊 Normal min skor: {min_score} → Uygulanan: {effective_min_score}")
+    print(f"{'='*60}")
+    
+    # Trend değişimi uyarısı (sadece günlük)
+    if not use_hourly and not use_4h and market_mode.get('trend_changed'):
+        alert_msg = format_bist_trend_change_alert(market_mode)
+        if alert_msg:
+            send_message(alert_msg)
+            print(f"📢 BIST TREND DEĞİŞİMİ: {market_mode.get('old_trend')} → {market_mode['trend']}")
     
     print(f"\n{'='*60}")
     print(f"🔍 BIST TARAMASI - {timeframe}")
@@ -694,11 +688,7 @@ def scan_all_stocks(min_score=65, save_to_db=True, verbose=False, use_15m=False,
 # ════════════════════════════════════════════════════════════
 
 def scan_hourly_stocks(min_score=68, symbols_list=None):
-    """
-    SAATLİK TARAMA
-    - BIST 100 kontrolü: Ayı'da 78, Güçlü Ayı'da 80
-    - 3 teyit sistemi (dip dönüşünde günlük atlanır)
-    """
+    """SAATLİK TARAMA - BIST 100 filtreli + 3 teyit + dip dönüşü"""
     if symbols_list is None:
         symbols_list = BIST_SYMBOLS[:200]
     
@@ -723,15 +713,16 @@ def scan_hourly_stocks(min_score=68, symbols_list=None):
 
 
 # ════════════════════════════════════════════════════════════
-# 4 SAATLİK TARAMA
+# 4 SAATLİK TARAMA (🆕 BIST 100 FİLTRELİ)
 # ════════════════════════════════════════════════════════════
 
 def scan_4h_stocks(min_score=65, symbols_list=None):
+    """4 SAATLİK TARAMA - BIST 100 filtreli"""
     if symbols_list is None:
         symbols_list = BIST_SYMBOLS
     
     print(f"\n{'='*60}")
-    print(f"🕐 4 SAATLİK TARAMA | Min skor: {min_score}")
+    print(f"🕐 4 SAATLİK TARAMA (BIST 100 FİLTRELİ) | Min skor: {min_score}")
     print(f"{'='*60}\n")
     
     signals_4h = scan_all_stocks(
@@ -791,7 +782,7 @@ if __name__ == "__main__":
     print("\n🚀 PROFESYONEL TARAMA MOTORU")
     print("1 → Günlük (BIST filtreli)")
     print("2 → Saatlik (3 TEYİT + BIST filtre + Dip Dönüşü)")
-    print("3 → 4 Saatlik")
+    print("3 → 4 Saatlik (BIST filtreli)")
     
     choice = input("\nSeçim: ").strip()
     
