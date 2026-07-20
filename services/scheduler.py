@@ -1,6 +1,7 @@
 """
 Profesyonel Zamanlayıcı - SON HAL
 Saatlik zaman kısıtı (11:00-17:00) + BIST 100 filtre + Haftalık rapor + Fibonacci
++ 20/50 BASİT KESİŞİM (fark yok)
 """
 
 import sys
@@ -118,18 +119,13 @@ def job_full_scan():
 
 
 # ════════════════════════════════════════════════════════════
-# 🆕 SAATLİK TARAMA (ZAMAN KISITI: 11:00-17:00)
+# SAATLİK TARAMA (ZAMAN KISITI: 11:00-17:00)
 # ════════════════════════════════════════════════════════════
 
 def job_hourly_scan():
-    """
-    SAATLİK TARAMA
-    - Zaman kısıtı: 11:00-17:00 arası çalışır
-    - 11:00 öncesi ve 17:00 sonrası atlanır
-    """
+    """SAATLİK TARAMA - Zaman kısıtı: 11:00-17:00 arası"""
     current_hour = tr_now().hour
     
-    # 🆕 ZAMAN KISITI KONTROLÜ
     if current_hour < 11:
         log_event(f"⏭️ SAATLİK ATLANDI - Saat {current_hour}:00 (11:00 öncesi)")
         return
@@ -405,18 +401,18 @@ def format_bist100_analysis(bist):
     msg += "📊📊📊━━━━━━━━━━━━━━━━━📊📊📊\n\n"
     return msg
     # ════════════════════════════════════════════════════════════
-# 20/50 KESİŞEN HİSSELER (GERÇEK KESİŞİM - %1 FARK)
+# 🆕 20/50 KESİŞEN HİSSELER (BASİT - fark filtresi YOK)
 # ════════════════════════════════════════════════════════════
 
 def find_20_50_crossovers():
-    """Bugün EMA 20/50 GERÇEK yukarı kesişimi olan hisseleri bul"""
+    """Bugün EMA 20/50 yukarı kesişimi olan hisseleri bul (basit kural)"""
     try:
         from database import get_stock_history
         from services.analyzer import analyze_stock
         from services.signal_engine import is_real_20_50_crossover
         import pandas as pd
         
-        log_event("🌟 GERÇEK 20/50 kesişimi olan hisseler aranıyor...")
+        log_event("🌟 20/50 kesişimi olan hisseler aranıyor...")
         
         crossovers = []
         
@@ -440,7 +436,8 @@ def find_20_50_crossovers():
                 if not all(v is not None for v in [e20, e50, pe20, pe50]):
                     continue
                 
-                is_real, gap = is_real_20_50_crossover(e20, e50, pe20, pe50, min_gap_pct=1.0)
+                # BASİT KESİŞİM KONTROLÜ (fark yok)
+                is_real, gap = is_real_20_50_crossover(e20, e50, pe20, pe50)
                 
                 if is_real:
                     current = analysis.get('current_price')
@@ -467,9 +464,10 @@ def find_20_50_crossovers():
             except:
                 continue
         
+        # Fark yüzdesine ve RVOL'e göre sırala
         crossovers.sort(key=lambda x: (x['gap_pct'], x['rvol']), reverse=True)
         
-        log_event(f"🌟 {len(crossovers)} hissede GERÇEK 20/50 kesişimi bulundu")
+        log_event(f"🌟 {len(crossovers)} hissede 20/50 kesişimi bulundu")
         return crossovers
     except Exception as e:
         log_event(f"❌ 20/50 tarama hatası: {e}")
@@ -482,13 +480,13 @@ def format_20_50_crossovers_report(crossovers):
         return ""
     
     msg = "🌟🌟🌟━━━━━━━━━━━━━━━━━🌟🌟🌟\n"
-    msg += "   ⚡ <b>EMA 20/50 GERÇEK KESİŞİM</b> ⚡\n"
+    msg += "   ⚡ <b>EMA 20/50 YUKARI KESİŞİM</b> ⚡\n"
     msg += "   🚀 <b>Bugün oluşan güçlü sinyaller</b>\n"
     msg += "🌟🌟🌟━━━━━━━━━━━━━━━━━🌟🌟🌟\n\n"
-    msg += "💎 <i>Sürtünme değil, GERÇEK kesişim!</i>\n"
-    msg += "📈 <i>EMA20 ile EMA50 arası fark >= %1</i>\n\n"
+    msg += "💎 <i>EMA20 kapanışta EMA50'yi yukarı kesti!</i>\n"
+    msg += "📈 <i>Orta vade yükseliş sinyali</i>\n\n"
     
-    for i, c in enumerate(crossovers[:10], 1):
+    for i, c in enumerate(crossovers[:15], 1):  # Max 15 göster
         medal = {1:'🥇', 2:'🥈', 3:'🥉'}.get(i, f"{i}.")
         change_emoji = "🟢" if c['daily_change'] > 0 else "🔴"
         rvol_tag = "🔥🔥" if c['rvol'] > 3 else "🔥" if c['rvol'] > 1.5 else ""
@@ -496,14 +494,13 @@ def format_20_50_crossovers_report(crossovers):
         msg += f"{medal} <b>{c['symbol']}</b> {rvol_tag}\n"
         msg += f"   💰 Fiyat: <b>{c['price']:.2f} TL</b> ({change_emoji}%{c['daily_change']:+.2f})\n"
         msg += f"   🌟 EMA20: {c['ema_20']:.2f} > EMA50: {c['ema_50']:.2f}\n"
-        msg += f"   📏 Fark: <b>%{c['gap_pct']:.2f}</b> (güçlü)\n"
         msg += f"   📊 RVOL: {c['rvol']:.1f}x | RSI: {c['rsi']:.0f}\n\n"
     
-    if len(crossovers) > 10:
-        msg += f"<i>+{len(crossovers) - 10} hisse daha aynı sinyalde</i>\n\n"
+    if len(crossovers) > 15:
+        msg += f"<i>+{len(crossovers) - 15} hisse daha aynı sinyalde</i>\n\n"
     
     msg += "━━━━━━━━━━━━━━━━━━━━━━━\n"
-    msg += "💡 <b>NOT:</b> Bu hisseler <b>bugün</b> gerçek 20/50 kesişimi yaşadı.\n"
+    msg += "💡 <b>NOT:</b> Bu hisseler <b>bugün</b> EMA20/50 kesişimi yaşadı.\n"
     msg += "⚠️ <i>Yarın açılışta durumlar değişebilir - kontrol et!</i>\n\n"
     
     return msg
@@ -974,14 +971,14 @@ def job_end_of_day_report():
         perf_msg = format_performance_report()
         send_message(perf_msg)
         
-        # MESAJ 3: 20/50 KESİŞEN HİSSELER
+        # MESAJ 3: 20/50 KESİŞEN HİSSELER (BASİT - fark yok)
         crossovers = find_20_50_crossovers()
         if crossovers:
             crossover_msg = format_20_50_crossovers_report(crossovers)
             if crossover_msg:
                 send_message(crossover_msg)
         else:
-            send_message("🌟 <b>EMA 20/50 GERÇEK KESİŞİM</b>\n━━━━━━━━━━━━━━━━━━━━━━━\n<i>Bugün gerçek 20/50 yukarı kesişimi olan hisse yok</i>\n<i>(Sürtünmeler filtrelendi)</i>\n\n")
+            send_message("🌟 <b>EMA 20/50 KESİŞİM</b>\n━━━━━━━━━━━━━━━━━━━━━━━\n<i>Bugün 20/50 yukarı kesişimi olan hisse yok</i>\n\n")
         
         # MESAJ 4: PİYASA + YARIN HİSSELER
         movers_data = []
