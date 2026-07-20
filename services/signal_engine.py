@@ -1,6 +1,6 @@
 """
 Profesyonel Sinyal Motoru - SON HAL
-EMA 5/22 (ana sistem) + EMA 20/50 kesişim (%1 fark filtresi)
+EMA 5/22 (ana sistem) + EMA 20/50 KESİŞİM (BASIT - fark yok!)
 + Golden Cross (50/200) + Güçlü Mum + Dip Dönüşü
 """
 
@@ -125,41 +125,35 @@ def score_momentum(analysis):
 
 
 # ════════════════════════════════════════════════════════════
-# 🆕 GERÇEK 20/50 KESİŞİM KONTROLÜ (%1 fark filtresi)
+# 🆕 BASİT 20/50 KESİŞİM KONTROLÜ (%1 FARK KALDIRILDI)
 # ════════════════════════════════════════════════════════════
 
 def is_real_20_50_crossover(e20, e50, pe20, pe50, min_gap_pct=1.0):
     """
-    GERÇEK 20/50 kesişim kontrolü
+    BASİT 20/50 kesişim kontrolü
     
-    Kurallar:
-    1. Dün: EMA20 <= EMA50 (altında)
-    2. Bugün: EMA20 > EMA50 (üstünde)
-    3. Bugünkü fark >= %1 (anlamlı fark, sürtünme değil)
+    Kural:
+    - Dün: EMA20 <= EMA50 (altında veya eşit)
+    - Bugün: EMA20 > EMA50 (üstünde)
+    - = KESİŞİM VAR!
     
-    Returns:
-        (bool, gap_pct): Gerçek kesişim var mı ve fark yüzdesi
+    Not: min_gap_pct parametresi eski kod uyumluluğu için kalıyor ama kullanılmıyor.
     """
     if not all(v is not None for v in [e20, e50, pe20, pe50]):
         return False, 0
     
-    # Kural 1 & 2: Klasik kesişim
-    if not (pe20 <= pe50 and e20 > e50):
-        return False, 0
-    
-    # Kural 3: Anlamlı fark (%1+)
-    gap_pct = ((e20 - e50) / e50) * 100
-    
-    if gap_pct >= min_gap_pct:
+    # BASİT KURAL: Dün altta, bugün üstte
+    if pe20 <= pe50 and e20 > e50:
+        gap_pct = ((e20 - e50) / e50) * 100  # Bilgi amaçlı hesaplanır
         return True, gap_pct
     
-    return False, gap_pct
+    return False, 0
 
 
 def score_trend(analysis):
     """
     EMA sistemi zaman dilimine göre değişir:
-    - Günlük: EMA 5/22/50/200 + EMA 20/50 BONUS (%1 fark filtresi)
+    - Günlük: EMA 5/22/50/200 + EMA 20/50 BONUS
     - 4H: EMA 5/22/50
     - Saatlik: EMA 5/22
     """
@@ -243,28 +237,20 @@ def score_trend(analysis):
         elif pe5 > pe22 and e5 < e22:
             reasons.append({'icon':'⚠️','title':'DEATH CROSS (5/22)','detail':'EMA5<EMA22','meaning':'Trend kırılıyor - dikkat'})
     
-    # 🌟🌟🌟 EMA 20/50 KESİŞİMİ (GERÇEK KESİŞİM FİLTRESİ - %1 FARK)
+    # 🌟🌟🌟 EMA 20/50 KESİŞİMİ (BASİT - fark yok)
     pe20 = analysis.get('prev_ema_20')
     if all(v is not None for v in [e20, e50, pe20, pe50]):
-        # GERÇEK KESİŞİM KONTROLÜ
-        is_real, gap = is_real_20_50_crossover(e20, e50, pe20, pe50, min_gap_pct=1.0)
+        # BASİT KESİŞİM KONTROLÜ (%1 fark KALDIRILDI)
+        is_real, gap = is_real_20_50_crossover(e20, e50, pe20, pe50)
         
         if is_real:
             score += 10  # ÖZEL BONUS
             reasons.append({
                 'icon':'🌟',
                 'title':'⚡ EMA 20/50 YUKARI KESİŞİM! ⚡',
-                'detail':f'EMA20({e20:.2f}) > EMA50({e50:.2f}) - Fark: %{gap:.2f}',
-                'meaning':'GERÇEK YÜKSELİŞ SİNYALİ - Nadir ve değerli!',
+                'detail':f'EMA20({e20:.2f}) > EMA50({e50:.2f})',
+                'meaning':'GÜÇLÜ YÜKSELİŞ SİNYALİ!',
                 'special_ema20_50': True
-            })
-        # Klasik kesişim var ama %1 fark yok (sürtünme)
-        elif pe20 <= pe50 and e20 > e50 and gap < 1.0:
-            reasons.append({
-                'icon':'⚠️',
-                'title':'EMA 20/50 SÜRTÜNME',
-                'detail':f'Fark sadece %{gap:.2f} - Anlamlı kesişim değil',
-                'meaning':'Mikro dalgalanma - Bekle'
             })
         # Mevcut boğa durumu (kesişim yok, sadece bilgi)
         elif e20 > e50:
@@ -546,12 +532,12 @@ def calculate_total_score(analysis):
 
     total = max(0, min(total, 100))
 
-    # 🌟 EMA 20/50 GERÇEK KESİŞİM TESPİTİ (Kart için)
+    # 🌟 EMA 20/50 KESİŞİM TESPİTİ (Basit - fark yok)
     has_20_50_cross = False
     e20 = analysis.get('ema_20'); e50 = analysis.get('ema_50')
     pe20 = analysis.get('prev_ema_20'); pe50 = analysis.get('prev_ema_50')
     if all(v is not None for v in [e20, e50, pe20, pe50]):
-        is_real, gap = is_real_20_50_crossover(e20, e50, pe20, pe50, min_gap_pct=1.0)
+        is_real, gap = is_real_20_50_crossover(e20, e50, pe20, pe50)
         if is_real:
             has_20_50_cross = True
 
@@ -703,4 +689,4 @@ def format_signal_message(signal):
 
 
 if __name__ == "__main__":
-    print("✅ Signal Engine - EMA 5/22 + EMA 20/50 GERÇEK KESİŞİM (%1 fark)")
+    print("✅ Signal Engine - EMA 5/22 + EMA 20/50 BASİT KESİŞİM (fark yok)")
