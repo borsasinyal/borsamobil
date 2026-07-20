@@ -59,9 +59,9 @@ jobs:
       
       - name: DB durumu kontrol
         run: |
-          if [ -f "borsa_bot.db" ]; then
+          if [ -f "borsa_sinyal.db" ]; then
             echo "✅ Eski DB bulundu ve indirildi"
-            ls -lh borsa_bot.db
+            ls -lh borsa_sinyal.db
           else
             echo "⚠️ Eski DB yok, yeni oluşturulacak"
           fi
@@ -94,7 +94,7 @@ jobs:
               from services.scheduler import job_4h_scan
               job_4h_scan()
           
-          # 🆕 HAFTALIK RAPOR - Veri çekme gerekmez
+          # HAFTALIK RAPOR - Veri çekme gerekmez
           elif job_type == "weekly_report":
               print("=" * 60)
               print("📊 HAFTALIK RAPOR")
@@ -151,13 +151,13 @@ jobs:
         run: |
           python -c "from services.signal_tracker import track_signals_job; track_signals_job()"
       
-      # DB KALICILIĞI - YENİ DB'Yİ ARTIFACT OLARAK YÜKLE
+      # 🆕 DB KALICILIĞI - DOĞRU DB ADI: borsa_sinyal.db
       - name: DB'yi Artifact olarak kaydet
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: bot-database
-          path: borsa_bot.db
+          path: borsa_sinyal.db
           retention-days: 30
           overwrite: true
       
