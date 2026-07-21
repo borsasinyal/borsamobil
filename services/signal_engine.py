@@ -1,7 +1,7 @@
 """
 Profesyonel Sinyal Motoru - SON HAL
-EMA 5/22 (ana sistem) + EMA 20/50 KESİŞİM (BASIT - fark yok!)
-+ Golden Cross (50/200) + Güçlü Mum + Dip Dönüşü
+EMA 5/22 (ana sistem) + Golden Cross (50/200) + Güçlü Mum + Dip Dönüşü
+20/50 KESİŞİM TAMAMEN KALDIRILDI
 """
 
 import sys
@@ -124,43 +124,17 @@ def score_momentum(analysis):
     return min(score, 22), reasons
 
 
-# ════════════════════════════════════════════════════════════
-# 🆕 BASİT 20/50 KESİŞİM KONTROLÜ (%1 FARK KALDIRILDI)
-# ════════════════════════════════════════════════════════════
-
-def is_real_20_50_crossover(e20, e50, pe20, pe50, min_gap_pct=1.0):
-    """
-    BASİT 20/50 kesişim kontrolü
-    
-    Kural:
-    - Dün: EMA20 <= EMA50 (altında veya eşit)
-    - Bugün: EMA20 > EMA50 (üstünde)
-    - = KESİŞİM VAR!
-    
-    Not: min_gap_pct parametresi eski kod uyumluluğu için kalıyor ama kullanılmıyor.
-    """
-    if not all(v is not None for v in [e20, e50, pe20, pe50]):
-        return False, 0
-    
-    # BASİT KURAL: Dün altta, bugün üstte
-    if pe20 <= pe50 and e20 > e50:
-        gap_pct = ((e20 - e50) / e50) * 100  # Bilgi amaçlı hesaplanır
-        return True, gap_pct
-    
-    return False, 0
-
-
 def score_trend(analysis):
     """
     EMA sistemi zaman dilimine göre değişir:
-    - Günlük: EMA 5/22/50/200 + EMA 20/50 BONUS
+    - Günlük: EMA 5/22/50/200 + Golden Cross
     - 4H: EMA 5/22/50
     - Saatlik: EMA 5/22
+    20/50 kesişim KALDIRILDI
     """
     score = 0; reasons = []
     c = analysis.get('current_price')
     e5 = analysis.get('ema_5'); e22 = analysis.get('ema_22')
-    e20 = analysis.get('ema_20')
     e50 = analysis.get('ema_50'); e200 = analysis.get('ema_200')
     pc = analysis.get('prev_close')
     sd = analysis.get('supertrend_dir')
@@ -237,37 +211,6 @@ def score_trend(analysis):
         elif pe5 > pe22 and e5 < e22:
             reasons.append({'icon':'⚠️','title':'DEATH CROSS (5/22)','detail':'EMA5<EMA22','meaning':'Trend kırılıyor - dikkat'})
     
-    # 🌟🌟🌟 EMA 20/50 KESİŞİMİ (BASİT - fark yok)
-    pe20 = analysis.get('prev_ema_20')
-    if all(v is not None for v in [e20, e50, pe20, pe50]):
-        # BASİT KESİŞİM KONTROLÜ (%1 fark KALDIRILDI)
-        is_real, gap = is_real_20_50_crossover(e20, e50, pe20, pe50)
-        
-        if is_real:
-            score += 10  # ÖZEL BONUS
-            reasons.append({
-                'icon':'🌟',
-                'title':'⚡ EMA 20/50 YUKARI KESİŞİM! ⚡',
-                'detail':f'EMA20({e20:.2f}) > EMA50({e50:.2f})',
-                'meaning':'GÜÇLÜ YÜKSELİŞ SİNYALİ!',
-                'special_ema20_50': True
-            })
-        # Mevcut boğa durumu (kesişim yok, sadece bilgi)
-        elif e20 > e50:
-            reasons.append({
-                'icon':'💎',
-                'title':'EMA 20 > EMA 50 (Mevcut)',
-                'detail':f'EMA20({e20:.2f}) > EMA50({e50:.2f})',
-                'meaning':'Orta vade pozitif'
-            })
-        elif pe20 >= pe50 and e20 < e50:
-            reasons.append({
-                'icon':'⚠️',
-                'title':'EMA 20/50 AŞAĞI KESTİ',
-                'detail':f'EMA20({e20:.2f}) < EMA50({e50:.2f})',
-                'meaning':'Momentum zayıflıyor - dikkat'
-            })
-    
     # 50/200 GOLDEN CROSS (Sadece günlükte)
     pe200 = analysis.get('prev_ema_200')
     if all(v is not None for v in [e50, e200, pe50, pe200]):
@@ -310,7 +253,7 @@ def score_trend(analysis):
         elif adx > 20: score += 2
         elif adx > 15: score += 1
     
-    return min(score, 40), reasons
+    return min(score, 30), reasons
     
 
 def score_wavetrend(analysis):
@@ -477,7 +420,7 @@ def calculate_total_score(analysis):
             'breakdown': {
                 'volume': {'score': 0, 'max': 25},
                 'momentum': {'score': 0, 'max': 22},
-                'trend': {'score': 0, 'max': 40},
+                'trend': {'score': 0, 'max': 30},
                 'wavetrend': {'score': 0, 'max': 8},
                 'vwap_pivot': {'score': 0, 'max': 15},
                 'breakout_candle': {'score': 0, 'max': 10},
@@ -499,7 +442,7 @@ def calculate_total_score(analysis):
     th_s, th_r = score_trend_health(analysis)
     ir_s, ir_r = score_intraday_range(analysis)
 
-    base = min(vol_s + mom_s + tre_s + wt_s + vwp_s + brk_s + liq_s, 115)
+    base = min(vol_s + mom_s + tre_s + wt_s + vwp_s + brk_s + liq_s, 105)
     bonus = dual_s + pos_s
     adj = vt_s + th_s + ir_s
     adj = max(-10, min(adj, 10))
@@ -532,23 +475,13 @@ def calculate_total_score(analysis):
 
     total = max(0, min(total, 100))
 
-    # 🌟 EMA 20/50 KESİŞİM TESPİTİ (Basit - fark yok)
-    has_20_50_cross = False
-    e20 = analysis.get('ema_20'); e50 = analysis.get('ema_50')
-    pe20 = analysis.get('prev_ema_20'); pe50 = analysis.get('prev_ema_50')
-    if all(v is not None for v in [e20, e50, pe20, pe50]):
-        is_real, gap = is_real_20_50_crossover(e20, e50, pe20, pe50)
-        if is_real:
-            has_20_50_cross = True
-
     return {
         'total': total,
         'tavan_skip': False,
-        'has_20_50_cross': has_20_50_cross,
         'breakdown': {
             'volume': {'score': vol_s, 'max': 25},
             'momentum': {'score': mom_s, 'max': 22},
-            'trend': {'score': tre_s, 'max': 40},
+            'trend': {'score': tre_s, 'max': 30},
             'wavetrend': {'score': wt_s, 'max': 8},
             'vwap_pivot': {'score': vwp_s, 'max': 15},
             'breakout_candle': {'score': brk_s, 'max': 10},
@@ -665,7 +598,7 @@ def generate_signal(symbol, analysis, history_df=None):
     kl = {'pivot':analysis.get('pivot'),'r1':analysis.get('r1'),'r2':analysis.get('r2'),'r3':analysis.get('r3'),
           's1':analysis.get('s1'),'prev_day_high':analysis.get('prev_day_high'),'prev_day_low':analysis.get('prev_day_low'),
           'ema_5':analysis.get('ema_5'),'ema_22':analysis.get('ema_22'),'ema_50':analysis.get('ema_50'),
-          'ema_200':analysis.get('ema_200'),'ema_20':analysis.get('ema_20')}
+          'ema_200':analysis.get('ema_200')}
 
     return {
         'symbol':symbol.replace('.IS',''),'full_symbol':symbol,'timestamp':tr_now().isoformat(),
@@ -675,7 +608,6 @@ def generate_signal(symbol, analysis, history_df=None):
         'risk_level':si['risk_level'],'holding':holding,'targets':targets,
         'reasons':sd['reasons'],'breakdown':sd['breakdown'],'warnings':warnings,
         'suggestions':suggestions,'key_levels':kl,
-        'has_20_50_cross':sd.get('has_20_50_cross', False),
         'candle_patterns':analysis.get('candle_patterns',[]),
         'breakouts':analysis.get('breakouts',[]),
         'momentum_status':analysis.get('momentum_status',{}),
@@ -689,4 +621,4 @@ def format_signal_message(signal):
 
 
 if __name__ == "__main__":
-    print("✅ Signal Engine - EMA 5/22 + EMA 20/50 BASİT KESİŞİM (fark yok)")
+    print("✅ Signal Engine - EMA 5/22 + Golden Cross (20/50 KALDIRILDI)")
