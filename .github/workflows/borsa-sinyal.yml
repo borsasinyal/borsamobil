@@ -20,14 +20,21 @@ on:
           - signal_tracker
           - full_scan_with_tracking
 
+# 🔑 Repo'ya yazma izni
+permissions:
+  contents: write
+
 jobs:
   scan:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     
     steps:
-      - name: Repo indir
+      - name: Repo indir (DB dahil)
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
       
       - name: Python kur
         uses: actions/setup-python@v5
@@ -46,24 +53,14 @@ jobs:
           pip install flask yfinance pandas numpy python-telegram-bot apscheduler requests
           pip install --upgrade git+https://github.com/rongardF/tvdatafeed.git
       
-      # DB KALICILIĞI - ÖNCE ESKI DB'Yİ İNDİR
-      - name: Eski DB indir (Artifact)
-        uses: dawidd6/action-download-artifact@v3
-        with:
-          name: bot-database
-          path: .
-          workflow: borsa-sinyal.yml
-          workflow_conclusion: ""
-          if_no_artifact_found: warn
-        continue-on-error: true
-      
       - name: DB durumu kontrol
         run: |
           if [ -f "borsa_sinyal.db" ]; then
-            echo "✅ Eski DB bulundu ve indirildi"
+            echo "✅ DB repo'dan geldi"
             ls -lh borsa_sinyal.db
+            echo "📊 Boyut: $(du -h borsa_sinyal.db | cut -f1)"
           else
-            echo "⚠️ Eski DB yok, yeni oluşturulacak"
+            echo "⚠️ DB yok, yeni oluşturulacak"
           fi
       
       - name: Veritabani baslat
@@ -151,15 +148,38 @@ jobs:
         run: |
           python -c "from services.signal_tracker import track_signals_job; track_signals_job()"
       
-      # 🆕 DB KALICILIĞI - DOĞRU DB ADI: borsa_sinyal.db
-      - name: DB'yi Artifact olarak kaydet
+      # 🔑 DB'yi REPO'YA COMMIT ET (KALICI!)
+      - name: DB'yi repoya kaydet
         if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: bot-database
-          path: borsa_sinyal.db
-          retention-days: 30
-          overwrite: true
+        run: |
+          if [ -f "borsa_sinyal.db" ]; then
+            echo "📊 DB boyutu: $(du -h borsa_sinyal.db | cut -f1)"
+            
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            
+            git add borsa_sinyal.db
+            
+            # Değişiklik var mı kontrol et
+            if git diff --staged --quiet; then
+              echo "ℹ️ DB'de değişiklik yok, commit atılmadı"
+            else
+              git commit -m "🤖 DB güncelleme: ${{ github.event.inputs.job_type }} - $(date '+%Y-%m-%d %H:%M')"
+              
+              # Push - conflict olursa 3 kez dene
+              for i in 1 2 3; do
+                if git pull --rebase origin main && git push origin main; then
+                  echo "✅ DB repo'ya kaydedildi (deneme $i)"
+                  break
+                else
+                  echo "⚠️ Push başarısız, tekrar deneniyor... ($i/3)"
+                  sleep 3
+                fi
+              done
+            fi
+          else
+            echo "⚠️ DB dosyası yok, commit atlanıyor"
+          fi
       
       - name: Tamamlandi
-        run: echo "Gorev tamamlandi"
+        run: echo "✅ Gorev tamamlandi"
