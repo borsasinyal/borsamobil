@@ -1,7 +1,8 @@
 """
-Profesyonel Sinyal Motoru - SON HAL
-EMA 5/22 (ana sistem) + Golden Cross (50/200) + Güçlü Mum + Dip Dönüşü
-20/50 KESİŞİM TAMAMEN KALDIRILDI
+Profesyonel Sinyal Motoru - SON HAL v2
+EMA 5/22 + Golden Cross + Güçlü Mum + Dip Dönüşü
++ HİBRİT STOP (ATR + EMA22 + Son dip)
++ GÜÇLÜ WT+SMI DUAL ONAY
 """
 
 import sys
@@ -125,13 +126,7 @@ def score_momentum(analysis):
 
 
 def score_trend(analysis):
-    """
-    EMA sistemi zaman dilimine göre değişir:
-    - Günlük: EMA 5/22/50/200 + Golden Cross
-    - 4H: EMA 5/22/50
-    - Saatlik: EMA 5/22
-    20/50 kesişim KALDIRILDI
-    """
+    """EMA sistemi zaman dilimine göre değişir"""
     score = 0; reasons = []
     c = analysis.get('current_price')
     e5 = analysis.get('ema_5'); e22 = analysis.get('ema_22')
@@ -145,7 +140,6 @@ def score_trend(analysis):
     
     timeframe = analysis.get('timeframe', 'daily')
     
-    # SAATLİK: Sadece EMA 5/22
     if timeframe == 'hourly' or (e50 is None):
         if all(v is not None for v in [c, e5, e22]):
             if c > e5 > e22:
@@ -177,7 +171,7 @@ def score_trend(analysis):
         
         return min(score, 30), reasons
     
-    # GÜNLÜK / 4H: EMA 5/22/50
+    # GÜNLÜK / 4H
     if all(v is not None for v in [c, e5, e22, e50]):
         if c > e5 > e22 > e50: 
             score += 10; reasons.append({'icon':'🏆','title':'MÜKEMMEL TREND','detail':'Fiyat>EMA5>EMA22>EMA50','meaning':'Tüm yukarı'})
@@ -203,7 +197,6 @@ def score_trend(analysis):
             if not is_dip: 
                 score -= 5; reasons.append({'icon':'🔴','title':'EMA50 KAYBEDİLDİ','detail':'Altına indi','meaning':'BOZULUYOR'})
     
-    # 5/22 GOLDEN CROSS
     pe5 = analysis.get('prev_ema_5'); pe22 = analysis.get('prev_ema_22')
     if all(v is not None for v in [e5, e22, pe5, pe22]):
         if pe5 <= pe22 and e5 > e22: 
@@ -211,36 +204,29 @@ def score_trend(analysis):
         elif pe5 > pe22 and e5 < e22:
             reasons.append({'icon':'⚠️','title':'DEATH CROSS (5/22)','detail':'EMA5<EMA22','meaning':'Trend kırılıyor - dikkat'})
     
-    # 50/200 GOLDEN CROSS (Sadece günlükte)
     pe200 = analysis.get('prev_ema_200')
     if all(v is not None for v in [e50, e200, pe50, pe200]):
         if pe50 <= pe200 and e50 > e200:
             score += 8; reasons.append({
-                'icon':'👑',
-                'title':'GOLDEN CROSS! (50/200)',
+                'icon':'👑','title':'GOLDEN CROSS! (50/200)',
                 'detail':'EMA50 EMA200 yukarı kesti',
                 'meaning':'BOĞA PİYASASI BAŞLIYOR - Nadir ve güçlü!'
             })
         elif e50 > e200:
             score += 3; reasons.append({
-                'icon':'💎',
-                'title':'UZUN VADE BOĞA',
-                'detail':'EMA50 > EMA200',
-                'meaning':'Boğa piyasası devam ediyor'
+                'icon':'💎','title':'UZUN VADE BOĞA',
+                'detail':'EMA50 > EMA200','meaning':'Boğa piyasası devam ediyor'
             })
         elif pe50 >= pe200 and e50 < e200:
             reasons.append({
-                'icon':'☠️',
-                'title':'DEATH CROSS (50/200) - BİLGİ',
+                'icon':'☠️','title':'DEATH CROSS (50/200) - BİLGİ',
                 'detail':'EMA50 EMA200 altına indi',
                 'meaning':'Uzun vade zayıflık - dikkatli ol'
             })
         elif e50 < e200:
             reasons.append({
-                'icon':'🐻',
-                'title':'UZUN VADE AYI - BİLGİ',
-                'detail':'EMA50 < EMA200',
-                'meaning':'Ayı piyasası içinde - fırsat olabilir'
+                'icon':'🐻','title':'UZUN VADE AYI - BİLGİ',
+                'detail':'EMA50 < EMA200','meaning':'Ayı piyasası içinde - fırsat olabilir'
             })
     
     if sd == 1: 
@@ -254,7 +240,7 @@ def score_trend(analysis):
         elif adx > 15: score += 1
     
     return min(score, 30), reasons
-    
+
 
 def score_wavetrend(analysis):
     score = 0; reasons = []
@@ -275,15 +261,59 @@ def score_wavetrend(analysis):
 
 
 def score_dual_confirmation(analysis):
+    """
+    🆕 GÜÇLENDİRİLMİŞ WT+SMI DUAL ONAY
+    Aynı anda dönerse çok değerli - puan artırıldı
+    """
     score = 0; reasons = []
+    is_dual_signal = False
+    is_dual_dip = False
+    
     wt1 = analysis.get('wt1'); wt2 = analysis.get('wt2')
+    pw1 = analysis.get('prev_wt1'); pw2 = analysis.get('prev_wt2')
     smi = analysis.get('smi'); ss = analysis.get('smi_signal')
-    if not all(v is not None for v in [wt1, wt2, smi, ss]): return 0, []
-    if wt1 > wt2 and smi > ss:
-        if wt1 < -30 and smi < -30: score = 3; reasons.append({'icon':'🎯','title':'ÇİFTLİ ONAY: DİP','detail':'WT+SMI dip','meaning':'Mükemmel!'})
-        elif wt1 < 50 and -40 < smi < 40: score = 2; reasons.append({'icon':'🎯','title':'ÇİFTLİ ONAY','detail':'İkisi pozitif','meaning':'Destek'})
-        else: score = 1
-    return score, reasons
+    psmi = analysis.get('prev_smi'); pss = analysis.get('prev_smi_signal')
+    
+    if not all(v is not None for v in [wt1, wt2, smi, ss]): 
+        return 0, [], False, False
+    
+    # AYNI ANDA KESİŞİM (En değerli!)
+    wt_cross_up = (pw1 is not None and pw2 is not None and pw1 <= pw2 and wt1 > wt2)
+    smi_cross_up = (psmi is not None and pss is not None and psmi <= pss and smi > ss)
+    
+    if wt_cross_up and smi_cross_up:
+        # DİP BÖLGEDE ÇİFT KESİŞİM = ALTIN SİNYAL
+        if wt1 < -30 and smi < -30:
+            score = 10
+            is_dual_dip = True
+            is_dual_signal = True
+            reasons.append({
+                'icon':'💎',
+                'title':'GÜÇLÜ DİP DÖNÜŞÜ! (WT+SMI)',
+                'detail':f'Dipte çift kesişim',
+                'meaning':'ALTIN FIRSAT - Çok nadir!'
+            })
+        else:
+            score = 8
+            is_dual_signal = True
+            reasons.append({
+                'icon':'⭐',
+                'title':'ÇİFTLİ DÖNÜŞ SİNYALİ! (WT+SMI)',
+                'detail':'İkisi aynı anda kesti',
+                'meaning':'GÜÇLÜ teyit - kaliteli sinyal!'
+            })
+    # İkisi de pozitif ama kesişim yok
+    elif wt1 > wt2 and smi > ss:
+        if wt1 < -30 and smi < -30:
+            score = 5
+            reasons.append({'icon':'🎯','title':'ÇİFTLİ ONAY: DİP','detail':'WT+SMI dip','meaning':'Güçlü dip'})
+        elif wt1 < 50 and -40 < smi < 40:
+            score = 3
+            reasons.append({'icon':'🎯','title':'ÇİFTLİ ONAY','detail':'İkisi pozitif','meaning':'Destek'})
+        else:
+            score = 1
+    
+    return score, reasons, is_dual_signal, is_dual_dip
 
 
 def score_position_bonus(analysis):
@@ -381,8 +411,7 @@ def score_breakout_candle(analysis):
     if strong_reversal_candle and c and e50 and c < e50 and rvol >= 1.2:
         score += 3
         reasons.append({
-            'icon':'🎯',
-            'title':'EMA50 ALTI DİP DÖNÜŞÜ!',
+            'icon':'🎯','title':'EMA50 ALTI DİP DÖNÜŞÜ!',
             'detail':'Güçlü mum + hacim',
             'meaning':'Erken giriş fırsatı - ASTOR tipi!'
         })
@@ -417,6 +446,8 @@ def calculate_total_score(analysis):
         return {
             'total': 0,
             'tavan_skip': True,
+            'is_dual_signal': False,
+            'is_dual_dip': False,
             'breakdown': {
                 'volume': {'score': 0, 'max': 25},
                 'momentum': {'score': 0, 'max': 22},
@@ -436,7 +467,10 @@ def calculate_total_score(analysis):
     vwp_s, vwp_r = score_vwap_pivot(analysis)
     brk_s, brk_r = score_breakout_candle(analysis)
     liq_s, liq_r = score_liquidity(analysis)
-    dual_s, dual_r = score_dual_confirmation(analysis)
+    
+    # 🆕 DUAL onay artık is_dual_signal ve is_dual_dip döndürüyor
+    dual_s, dual_r, is_dual_signal, is_dual_dip = score_dual_confirmation(analysis)
+    
     pos_s, pos_r = score_position_bonus(analysis)
     vt_s, vt_r = score_volume_trend(analysis)
     th_s, th_r = score_trend_health(analysis)
@@ -478,6 +512,8 @@ def calculate_total_score(analysis):
     return {
         'total': total,
         'tavan_skip': False,
+        'is_dual_signal': is_dual_signal,
+        'is_dual_dip': is_dual_dip,
         'breakdown': {
             'volume': {'score': vol_s, 'max': 25},
             'momentum': {'score': mom_s, 'max': 22},
@@ -492,21 +528,134 @@ def calculate_total_score(analysis):
 
 
 # ════════════════════════════════════════════════════════════
-# HEDEF, UYARI, SİNYAL
+# 🆕 HİBRİT STOP + HEDEFLER (ATR + EMA22 + Son dip)
 # ════════════════════════════════════════════════════════════
 
-def calculate_targets(cp, atr, analysis):
-    if not atr or atr <= 0: ap = 1.0
-    else: ap = max(0.5, min((atr/cp)*100, 4))
-    t1 = round(cp*(1+ap*2.0/100),2); t2 = round(cp*(1+ap*3.5/100),2); t3 = round(cp*(1+ap*5.5/100),2); sl = round(cp*(1-ap*1.5/100),2)
-    r2 = analysis.get('r2'); r3 = analysis.get('r3')
-    if r2 and r2 > cp and r2 > t2: t2 = round(r2,2)
-    if r3 and r3 > cp and r3 > t3: t3 = round(r3,2)
-    if t2 <= t1: t2 = round(t1*1.025,2)
-    if t3 <= t2: t3 = round(t2*1.030,2)
-    t1p = round(((t1-cp)/cp)*100,2); t2p = round(((t2-cp)/cp)*100,2); t3p = round(((t3-cp)/cp)*100,2)
-    risk = cp - sl; rr = round((t2-cp)/risk,2) if risk > 0 else 0
-    return {'entry':cp,'target_1':t1,'target_1_pct':t1p,'target_2':t2,'target_2_pct':t2p,'target_3':t3,'target_3_pct':t3p,'stop_loss':sl,'stop_pct':round(ap*1.5,2),'risk_reward':rr,'atr_value':round(atr,4) if atr else None}
+def calculate_targets(cp, atr, analysis, df=None):
+    """
+    HİBRİT STOP HESABI:
+    - Aday 1: ATR × 2.0 altı (volatilite bazlı)
+    - Aday 2: EMA22 altı %1 marj (teknik destek)
+    - Aday 3: Son 5 mumun dibi (alıcı korunma seviyesi)
+    → En yakın olanı stop
+    → Min %2.5, Max %5 sınır
+    
+    HEDEFLER:
+    - ATR bazlı, ama biraz daha genişletilmiş
+    - Pivot direnç seviyeleri hedef olarak da kullanılabilir
+    """
+    
+    # ═══════════════════════════════════════
+    # HİBRİT STOP HESABI
+    # ═══════════════════════════════════════
+    stop_candidates = []
+    
+    # ADAY 1: ATR bazlı (ATR × 2.0)
+    if atr and atr > 0:
+        atr_stop = cp - (atr * 2.0)
+        atr_pct = ((cp - atr_stop) / cp) * 100
+        stop_candidates.append({
+            'price': atr_stop,
+            'pct': atr_pct,
+            'source': 'ATR × 2.0'
+        })
+    
+    # ADAY 2: EMA22 altı (%1 marj)
+    ema22 = analysis.get('ema_22')
+    if ema22 and ema22 < cp:
+        ema22_stop = ema22 * 0.99  # EMA22'nin %1 altı
+        ema22_pct = ((cp - ema22_stop) / cp) * 100
+        stop_candidates.append({
+            'price': ema22_stop,
+            'pct': ema22_pct,
+            'source': 'EMA22 altı'
+        })
+    
+    # ADAY 3: Son 5 mumun dibi
+    if df is not None and len(df) >= 5:
+        last_5_low = df['low'].tail(5).min()
+        if last_5_low < cp:
+            dip_stop = last_5_low * 0.995  # dipin %0.5 altı
+            dip_pct = ((cp - dip_stop) / cp) * 100
+            stop_candidates.append({
+                'price': dip_stop,
+                'pct': dip_pct,
+                'source': 'Son 5 mum dibi'
+            })
+    
+    # EN YAKIN stop'u seç (en küçük yüzde)
+    if stop_candidates:
+        # Min %2.5 ve max %5 filtre uygula
+        valid = [s for s in stop_candidates if 2.5 <= s['pct'] <= 5.0]
+        
+        if valid:
+            # Geçerli aday varsa en yakınını al
+            best_stop = min(valid, key=lambda x: x['pct'])
+        else:
+            # Hiçbiri aralıkta değilse en yakını al ama sınıra çek
+            best_stop = min(stop_candidates, key=lambda x: x['pct'])
+            if best_stop['pct'] < 2.5:
+                best_stop = {'price': cp * 0.975, 'pct': 2.5, 'source': 'Min sınır (%2.5)'}
+            elif best_stop['pct'] > 5.0:
+                best_stop = {'price': cp * 0.95, 'pct': 5.0, 'source': 'Max sınır (%5)'}
+        
+        stop_price = round(best_stop['price'], 2)
+        stop_pct_final = round(best_stop['pct'], 2)
+        stop_source = best_stop['source']
+    else:
+        # Fallback: %3 stop
+        stop_price = round(cp * 0.97, 2)
+        stop_pct_final = 3.0
+        stop_source = 'Fallback %3'
+    
+    # ═══════════════════════════════════════
+    # HEDEFLER (ATR bazlı, biraz genişletildi)
+    # ═══════════════════════════════════════
+    if not atr or atr <= 0:
+        ap = 1.5
+    else:
+        ap = max(0.8, min((atr / cp) * 100, 5))
+    
+    # Hedefler biraz daha geniş
+    t1 = round(cp * (1 + ap * 2.5 / 100), 2)
+    t2 = round(cp * (1 + ap * 4.5 / 100), 2)
+    t3 = round(cp * (1 + ap * 7.0 / 100), 2)
+    
+    # Pivot direnç seviyeleri hedef olarak kullan (uygunsa)
+    r1 = analysis.get('r1')
+    r2 = analysis.get('r2')
+    r3 = analysis.get('r3')
+    
+    if r1 and r1 > cp and r1 > t1 and (r1 - cp) / cp * 100 < 5:
+        t1 = round(r1, 2)
+    if r2 and r2 > cp and r2 > t2:
+        t2 = round(r2, 2)
+    if r3 and r3 > cp and r3 > t3:
+        t3 = round(r3, 2)
+    
+    # Sıralama kontrolü (t1 < t2 < t3)
+    if t2 <= t1: t2 = round(t1 * 1.025, 2)
+    if t3 <= t2: t3 = round(t2 * 1.030, 2)
+    
+    t1p = round(((t1 - cp) / cp) * 100, 2)
+    t2p = round(((t2 - cp) / cp) * 100, 2)
+    t3p = round(((t3 - cp) / cp) * 100, 2)
+    
+    # Risk/Ödül
+    risk = cp - stop_price
+    rr = round((t2 - cp) / risk, 2) if risk > 0 else 0
+    
+    return {
+        'entry': cp,
+        'target_1': t1, 'target_1_pct': t1p,
+        'target_2': t2, 'target_2_pct': t2p,
+        'target_3': t3, 'target_3_pct': t3p,
+        'stop_loss': stop_price,
+        'stop_pct': stop_pct_final,
+        'stop_source': stop_source,  # 🆕 Stop'un hangi yönteme dayandığı
+        'risk_reward': rr,
+        'atr_value': round(atr, 4) if atr else None
+    }
 
 
 def generate_warnings(analysis):
@@ -540,11 +689,8 @@ def generate_warnings(analysis):
     if all(v is not None for v in [e50, e200, pe50, pe200]):
         if pe50 >= pe200 and e50 < e200:
             warnings.append({
-                'level':'MEDIUM',
-                'icon':'☠️',
-                'title':'DEATH CROSS OLUŞTU (50/200)',
-                'detail':'Uzun vade zayıflık',
-                'action':'Dikkatli ol, ama fırsat da olabilir'
+                'level':'MEDIUM','icon':'☠️','title':'DEATH CROSS OLUŞTU (50/200)',
+                'detail':'Uzun vade zayıflık','action':'Dikkatli ol, ama fırsat da olabilir'
             })
 
     return warnings, suggestions
@@ -578,7 +724,10 @@ def generate_signal(symbol, analysis, history_df=None):
     ts = sd['total']
     si = determine_strength(ts)
     atr = analysis.get('atr')
-    targets = calculate_targets(cp, atr, analysis)
+    
+    # 🆕 history_df hibrit stop hesabı için kullanılıyor
+    targets = calculate_targets(cp, atr, analysis, history_df)
+    
     warnings, suggestions = generate_warnings(analysis)
 
     ind = {'rsi':analysis.get('rsi'),'macd':analysis.get('macd'),'rvol':analysis.get('rvol'),
@@ -611,7 +760,10 @@ def generate_signal(symbol, analysis, history_df=None):
         'candle_patterns':analysis.get('candle_patterns',[]),
         'breakouts':analysis.get('breakouts',[]),
         'momentum_status':analysis.get('momentum_status',{}),
-        'indicators':ind
+        'indicators':ind,
+        # 🆕 Dual signal flag'leri
+        'is_dual_signal': sd.get('is_dual_signal', False),
+        'is_dual_dip': sd.get('is_dual_dip', False)
     }
 
 
@@ -621,4 +773,4 @@ def format_signal_message(signal):
 
 
 if __name__ == "__main__":
-    print("✅ Signal Engine - EMA 5/22 + Golden Cross (20/50 KALDIRILDI)")
+    print("✅ Signal Engine v2 - Hibrit Stop + Güçlü Dual Onay")
