@@ -1,7 +1,8 @@
 """
-Telegram Bot - SWING + SAATLİK (3 TEYİT) + 4 SAATLİK + Tavan Adayı
+Telegram Bot v3 - FIBONACCI KARTLARI
+SWING + SAATLİK (3 TEYİT) + 4 SAATLİK + Tavan Adayı
 + AL PENCERESİ + EMA 5/22/50/200
-20/50 KESİŞİM KUTUSU KALDIRILDI
++ FIBONACCI HEDEFLERİ ve SEVİYELERİ
 """
 
 import sys
@@ -47,7 +48,6 @@ def get_bot():
 # ════════════════════════════════════════════════════════════
 
 def check_entry_window(symbol, signal_price):
-    """Sinyal fiyatı ile şu anki fiyatı karşılaştır"""
     try:
         current_price = None
         
@@ -125,7 +125,6 @@ def check_entry_window(symbol, signal_price):
 
 
 def format_entry_window_box(entry_check):
-    """AL PENCERESİ kutusunu formatla"""
     if not entry_check:
         return ""
     
@@ -191,6 +190,89 @@ def format_entry_window_box(entry_check):
 
 
 # ════════════════════════════════════════════════════════════
+# 🆕 FIBONACCI KUTUSU (Kartlarda gösterilecek)
+# ════════════════════════════════════════════════════════════
+
+def format_fibonacci_box(fibonacci, current_price):
+    """Fibonacci seviyelerini gösteren kutu"""
+    if not fibonacci:
+        return ""
+    
+    normal = fibonacci.get('normal_levels', {})
+    extended = fibonacci.get('extended_levels', {})
+    is_above_zirve = fibonacci.get('is_above_zirve', False)
+    zone = fibonacci.get('current_zone', '')
+    lookback = fibonacci.get('lookback', 90)
+    
+    msg = "📐📐📐━━━━━━━━━━━━━━━━━📐📐📐\n"
+    msg += "   <b>FİBONACCİ SEVİYELERİ</b>\n"
+    msg += f"   <i>Son {lookback} mum baz alındı</i>\n"
+    msg += "📐📐📐━━━━━━━━━━━━━━━━━📐📐📐\n\n"
+    
+    if zone:
+        msg += f"📍 <b>Fiyatın Bölgesi:</b> {escape_html(zone)}\n\n"
+    
+    # ZİRVE ÜSTÜNDE (Extended)
+    if is_above_zirve:
+        msg += "🚀 <b>ZİRVE KIRILDI - Extended Fibonacci</b>\n\n"
+        
+        if extended.get('ext_2618'):
+            msg += f"🔴 <b>2.618:</b> {extended['ext_2618']:.2f}\n"
+        if extended.get('ext_2000'):
+            msg += f"🔴 <b>2.0:</b> {extended['ext_2000']:.2f}\n"
+        if extended.get('ext_1618'):
+            msg += f"🔴 <b>1.618 (Altın Gen.):</b> {extended['ext_1618']:.2f}\n"
+        if extended.get('ext_1414'):
+            msg += f"🔴 <b>1.414:</b> {extended['ext_1414']:.2f}\n"
+        if extended.get('ext_1272'):
+            msg += f"🔴 <b>1.272:</b> {extended['ext_1272']:.2f}\n"
+        
+        msg += f"\n⚪ <b>ŞU AN:</b> <b>{current_price:.2f}</b>\n\n"
+        
+        if normal.get('zirve'):
+            msg += f"🟢 <b>1.0 (Eski Zirve):</b> {normal['zirve']:.2f}\n"
+        if normal.get('fib_786'):
+            msg += f"🟢 <b>0.786:</b> {normal['fib_786']:.2f}\n"
+        if normal.get('fib_618'):
+            msg += f"🟢 <b>0.618 (Altın Oran):</b> {normal['fib_618']:.2f}\n"
+    
+    # NORMAL BÖLGE
+    else:
+        # Dirençler (fiyatın üstü)
+        if normal.get('zirve') and current_price < normal['zirve']:
+            msg += f"🔴 <b>Direnç 1.0 (Zirve):</b> {normal['zirve']:.2f}\n"
+        if normal.get('fib_786') and current_price < normal['fib_786']:
+            msg += f"🔴 <b>Direnç 0.786:</b> {normal['fib_786']:.2f}\n"
+        if normal.get('fib_618') and current_price < normal['fib_618']:
+            msg += f"🔴 <b>Direnç 0.618 (Altın Oran):</b> {normal['fib_618']:.2f}\n"
+        if normal.get('fib_500') and current_price < normal['fib_500']:
+            msg += f"🔴 <b>Direnç 0.5:</b> {normal['fib_500']:.2f}\n"
+        if normal.get('fib_382') and current_price < normal['fib_382']:
+            msg += f"🔴 <b>Direnç 0.382:</b> {normal['fib_382']:.2f}\n"
+        if normal.get('fib_236') and current_price < normal['fib_236']:
+            msg += f"🔴 <b>Direnç 0.236:</b> {normal['fib_236']:.2f}\n"
+        
+        msg += f"\n⚪ <b>ŞU AN:</b> <b>{current_price:.2f}</b>\n\n"
+        
+        # Destekler (fiyatın altı)
+        if normal.get('fib_236') and current_price > normal['fib_236']:
+            msg += f"🟢 <b>Destek 0.236:</b> {normal['fib_236']:.2f}\n"
+        if normal.get('fib_382') and current_price > normal['fib_382']:
+            msg += f"🟢 <b>Destek 0.382:</b> {normal['fib_382']:.2f}\n"
+        if normal.get('fib_500') and current_price > normal['fib_500']:
+            msg += f"🟢 <b>Destek 0.5:</b> {normal['fib_500']:.2f}\n"
+        if normal.get('fib_618') and current_price > normal['fib_618']:
+            msg += f"🟢 <b>Destek 0.618 (Altın Oran):</b> {normal['fib_618']:.2f}\n"
+        if normal.get('fib_786') and current_price > normal['fib_786']:
+            msg += f"🟢 <b>Destek 0.786:</b> {normal['fib_786']:.2f}\n"
+        if normal.get('dip'):
+            msg += f"🟢 <b>Destek 0.0 (Dip):</b> {normal['dip']:.2f}\n"
+    
+    msg += "\n"
+    return msg
+
+
+# ════════════════════════════════════════════════════════════
 # MESAJ GÖNDERME
 # ════════════════════════════════════════════════════════════
 
@@ -224,17 +306,19 @@ def send_message(text):
 
 
 # ════════════════════════════════════════════════════════════
-# ÖZET KART (Top 5 SWING) - 🌟 KALDIRILDI
+# ÖZET KART (Top 5 SWING)
 # ════════════════════════════════════════════════════════════
 
 def format_summary_card(signals, max_signals=5):
     if not signals: return None
     top = signals[:max_signals]
     tavan = sum(1 for s in top if is_tavan_adayi(s))
+    dual = sum(1 for s in top if s.get('is_dual_signal') or s.get('is_dual_dip'))
     
     msg = "🏆🏆🏆━━━━━━━━━━━━━━━━━🏆🏆🏆\n"
     msg += f"      <b>EN İYİ {len(top)} SWING SİNYAL</b>\n"
     if tavan > 0: msg += f"      ⚡ {tavan} TAVAN ADAYI VAR!\n"
+    if dual > 0: msg += f"      💎 {dual} ÇİFTLİ DÖNÜŞ VAR!\n"
     msg += "🏆🏆🏆━━━━━━━━━━━━━━━━━🏆🏆🏆\n\n"
     
     for i, s in enumerate(top, 1):
@@ -246,6 +330,11 @@ def format_summary_card(signals, max_signals=5):
         t1p = t.get('target_1_pct',0)
         medal = get_medal_emoji(i)
         tv = " ⚡" if is_tavan_adayi(s) else ""
+        dual_tag = ""
+        if s.get('is_dual_dip'):
+            dual_tag = " 💎"
+        elif s.get('is_dual_signal'):
+            dual_tag = " ⭐"
         
         if sc >= 85: stars = "⭐⭐⭐⭐⭐"
         elif sc >= 75: stars = "⭐⭐⭐⭐"
@@ -253,7 +342,7 @@ def format_summary_card(signals, max_signals=5):
         else: stars = "⭐⭐"
         
         bar = "█" * int(sc/10) + "░" * (10 - int(sc/10))
-        msg += f"{medal} <b>{sym}</b>{tv} {stars}\n"
+        msg += f"{medal} <b>{sym}</b>{tv}{dual_tag} {stars}\n"
         msg += f"   💯 <b>{sc}/100</b> <code>{bar}</code>\n"
         msg += f"   💰 {pr:.2f} → 🎯 <b>{t1:.2f}</b> (<b>+{t1p}%</b>)\n\n"
     
@@ -262,7 +351,7 @@ def format_summary_card(signals, max_signals=5):
 
 
 # ════════════════════════════════════════════════════════════
-# SWING SİNYAL KARTI (🌟 EMA 20/50 KUTUSU KALDIRILDI)
+# SWING SİNYAL KARTI (FIBONACCI EKLENDİ)
 # ════════════════════════════════════════════════════════════
 
 def format_signal_for_telegram(signal, signal_index=1):
@@ -289,6 +378,8 @@ def format_signal_for_telegram(signal, signal_index=1):
     holding = signal.get('holding',{})
     
     tavan = is_tavan_adayi(signal)
+    is_dual = signal.get('is_dual_signal', False)
+    is_dual_dip = signal.get('is_dual_dip', False)
     
     entry_check = check_entry_window(signal['symbol'], price)
     entry_box = format_entry_window_box(entry_check)
@@ -300,15 +391,22 @@ def format_signal_for_telegram(signal, signal_index=1):
     
     medal = get_medal_emoji(signal_index)
     
+    # Dual signal etiketi
+    dual_header = ""
+    if is_dual_dip:
+        dual_header = " 💎 GÜÇLÜ DİP DÖNÜŞÜ!"
+    elif is_dual:
+        dual_header = " ⭐ ÇİFTLİ DÖNÜŞ!"
+    
     if tavan:
         msg = f"{color}{color}{color}{se}{se}{se}{color}{color}{color}{se}{se}{se}{color}{color}{color}\n"
-        msg += f"     {medal} <b>SİNYAL #{signal_index}{te}</b>\n"
+        msg += f"     {medal} <b>SİNYAL #{signal_index}{te}{dual_header}</b>\n"
         msg += f"{color}{color}{color}{se}{se}{se}{color}{color}{color}{se}{se}{se}{color}{color}{color}\n\n"
         msg += "⚡⚡⚡ <b>TAVAN ADAYI!</b> ⚡⚡⚡\n━━━━━━━━━━━━━━━━━━━━━━━\n"
         msg += "🚀 Hacim destekli güçlü yükseliş!\n⚠️ <b>RİSKLİ</b> - Küçük pozisyon\n━━━━━━━━━━━━━━━━━━━━━━━\n\n"
     else:
         msg = f"{color}{color}{color}{color}{color}{color}{color}{color}{color}{color}{color}{color}\n"
-        msg += f"     {medal} <b>SİNYAL #{signal_index}</b>\n"
+        msg += f"     {medal} <b>SİNYAL #{signal_index}{dual_header}</b>\n"
         msg += f"{color}{color}{color}{color}{color}{color}{color}{color}{color}{color}{color}{color}\n\n"
     
     msg += entry_box
@@ -326,7 +424,8 @@ def format_signal_for_telegram(signal, signal_index=1):
         if holding.get('reason'): msg += f"💡 <i>{escape_html(holding['reason'])}</i>\n"
         msg += "\n"
     
-    msg += "━━━━━━━━━━━━━━━━━━━━━━━\n💼 <b>İŞLEM PLANI - 3 HEDEF</b>\n━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+    # 🆕 İŞLEM PLANI - FIBONACCI HEDEFLERİ
+    msg += "━━━━━━━━━━━━━━━━━━━━━━━\n💼 <b>İŞLEM PLANI - FIBONACCI HEDEFLERİ</b>\n━━━━━━━━━━━━━━━━━━━━━━━\n\n"
     msg += f"📥 <b>GİRİŞ:</b> {t['entry']:.2f} TL\n"
     
     if entry_check['status'] == 'missed':
@@ -342,10 +441,32 @@ def format_signal_for_telegram(signal, signal_index=1):
     h2 = "2-3 gün" if score >= 85 else "3-4 gün" if score >= 75 else "3-5 gün"
     h3 = "3-5 gün" if score >= 85 else "4-7 gün" if score >= 75 else "5-10 gün"
     
-    msg += f"🎯 <b>H1:</b> {t['target_1']:.2f} TL <b>(+{t['target_1_pct']}%)</b>\n   ⏰ <i>{h1}</i> | 💡 <i>%33 sat</i>\n\n"
-    msg += f"🎯 <b>H2:</b> {t['target_2']:.2f} TL <b>(+{t['target_2_pct']}%)</b>\n   ⏰ <i>{h2}</i> | 💡 <i>%33 sat</i>\n\n"
-    msg += f"🎯 <b>H3:</b> {t['target_3']:.2f} TL <b>(+{t['target_3_pct']}%)</b>\n   ⏰ <i>{h3}</i> | 💡 <i>Kalanı sat</i>\n\n"
-    msg += f"🛑 <b>STOP:</b> {t['stop_loss']:.2f} TL <b>(-{t['stop_pct']}%)</b>\n⚖️ <b>R/Ö:</b> 1/{t['risk_reward']}\n\n"
+    # Fibonacci hedef kaynakları
+    t1_src = t.get('target_1_source', '')
+    t2_src = t.get('target_2_source', '')
+    t3_src = t.get('target_3_source', '')
+    stop_src = t.get('stop_source', '')
+    
+    msg += f"🎯 <b>H1:</b> {t['target_1']:.2f} TL <b>(+{t['target_1_pct']}%)</b>\n"
+    if t1_src: msg += f"   📐 <i>{escape_html(t1_src)}</i>\n"
+    msg += f"   ⏰ <i>{h1}</i> | 💡 <i>%33 sat</i>\n\n"
+    
+    msg += f"🎯 <b>H2:</b> {t['target_2']:.2f} TL <b>(+{t['target_2_pct']}%)</b>\n"
+    if t2_src: msg += f"   📐 <i>{escape_html(t2_src)}</i>\n"
+    msg += f"   ⏰ <i>{h2}</i> | 💡 <i>%33 sat</i>\n\n"
+    
+    msg += f"🎯 <b>H3:</b> {t['target_3']:.2f} TL <b>(+{t['target_3_pct']}%)</b>\n"
+    if t3_src: msg += f"   📐 <i>{escape_html(t3_src)}</i>\n"
+    msg += f"   ⏰ <i>{h3}</i> | 💡 <i>Kalanı sat</i>\n\n"
+    
+    msg += f"🛑 <b>STOP:</b> {t['stop_loss']:.2f} TL <b>(-{t['stop_pct']}%)</b>\n"
+    if stop_src: msg += f"   📐 <i>{escape_html(stop_src)}</i>\n"
+    msg += f"⚖️ <b>R/Ö:</b> 1/{t['risk_reward']}\n\n"
+    
+    # 🆕 FIBONACCI SEVİYELERİ KUTUSU
+    fibonacci = signal.get('fibonacci')
+    if fibonacci:
+        msg += format_fibonacci_box(fibonacci, price)
     
     if signal.get('reasons'):
         msg += f"━━━━━━━━━━━━━━━━━━━━━━━\n✅ <b>SEBEPLER ({len(signal['reasons'])})</b>\n━━━━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -369,7 +490,7 @@ def format_signal_for_telegram(signal, signal_index=1):
     
     kl = signal.get('key_levels',{})
     if any([kl.get('pivot'),kl.get('r1'),kl.get('ema_5')]):
-        msg += "━━━━━━━━━━━━━━━━━━━━━━━\n📍 <b>SEVİYELER</b>\n━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        msg += "━━━━━━━━━━━━━━━━━━━━━━━\n📍 <b>DİĞER SEVİYELER (EMA + Pivot)</b>\n━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         if kl.get('pivot'): msg += f"{'🟢' if price>kl['pivot'] else '🔴'} Pivot : <b>{kl['pivot']:.2f}</b>\n"
         if kl.get('r1'): msg += f"{'✅' if price>kl['r1'] else '🎯'} R1    : <b>{kl['r1']:.2f}</b>\n"
         if kl.get('r2'): msg += f"{'✅' if price>kl['r2'] else '🎯'} R2    : <b>{kl['r2']:.2f}</b>\n"
@@ -385,14 +506,16 @@ def format_signal_for_telegram(signal, signal_index=1):
     if holding and holding.get('strategy') and holding.get('strategy') != 'YOK':
         msg += f"⏱️ <i>{escape_html(holding.get('strategy','SWING'))} • {escape_html(holding.get('duration','2-5 gün'))}</i>\n"
     else: msg += "⏱️ <i>SWING TRADE • 2-5 gün</i>\n"
-    msg += "🤖 <i>Borsa Sinyal Bot</i>\n\n"
+    msg += "🤖 <i>Borsa Sinyal Bot • Fibonacci Hedefli</i>\n\n"
     
     if tavan: msg += f"{color}{color}{color}{se}{se}{se}{color}{color}{color}{se}{se}{se}{color}{color}{color}"
     else: msg += f"{color}{color}{color}{color}{color}{color}{color}{color}{color}{color}{color}{color}"
     
     return msg
-    # ════════════════════════════════════════════════════════════
-# SAATLİK SİNYAL KARTI (3 TEYİT KUTUSU)
+
+
+# ════════════════════════════════════════════════════════════
+# SAATLİK SİNYAL KARTI (Fibonacci eklendi)
 # ════════════════════════════════════════════════════════════
 
 def format_hourly_signal(signal, signal_index=1):
@@ -408,10 +531,12 @@ def format_hourly_signal(signal, signal_index=1):
     action = escape_html(signal.get('action','-'))
     
     entry = t.get('entry', price)
+    target = t.get('target_1', 0)
+    stop = t.get('stop_loss', 0)
     target_pct = t.get('target_1_pct', 3)
     stop_pct = t.get('stop_pct', 2)
-    target = round(entry * (1 + target_pct/100), 2)
-    stop = round(entry * (1 - stop_pct/100), 2)
+    t1_src = t.get('target_1_source', '')
+    stop_src = t.get('stop_source', '')
     
     ind = signal.get('indicators',{})
     
@@ -419,13 +544,18 @@ def format_hourly_signal(signal, signal_index=1):
     entry_box = format_entry_window_box(entry_check)
     
     confirmations = signal.get('hourly_confirmations', {})
+    is_dual = signal.get('is_dual_signal', False)
+    is_dual_dip = signal.get('is_dual_dip', False)
+    
+    dual_header = ""
+    if is_dual_dip: dual_header = " 💎"
+    elif is_dual: dual_header = " ⭐"
     
     msg = "⚡⚡⚡━━━━━━━━━━━━━━━━━⚡⚡⚡\n"
-    msg += f"  🕐 <b>SAATLİK SİNYAL #{signal_index}</b>\n"
+    msg += f"  🕐 <b>SAATLİK SİNYAL #{signal_index}{dual_header}</b>\n"
     msg += f"  <b>BUGÜN TRADE EDİLEBİLİR!</b>\n"
     msg += "⚡⚡⚡━━━━━━━━━━━━━━━━━⚡⚡⚡\n\n"
     
-    # 3 TEYİT KUTUSU
     if confirmations and confirmations.get('passed'):
         msg += "✅✅✅━━━━━━━━━━━━━━━━━✅✅✅\n"
         msg += "   🎯 <b>3 TEYİT ONAYLI!</b>\n"
@@ -455,7 +585,7 @@ def format_hourly_signal(signal, signal_index=1):
         for r in signal['reasons'][:6]:
             msg += f"{r.get('icon','✅')} <b>{escape_html(r.get('title',''))}</b>\n   → <i>{escape_html(r.get('meaning',''))}</i>\n\n"
     
-    msg += "━━━━━━━━━━━━━━━━━━━━━━━\n🎯 <b>GÜN İÇİ PLAN</b>\n━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+    msg += "━━━━━━━━━━━━━━━━━━━━━━━\n🎯 <b>GÜN İÇİ PLAN (FIBONACCI)</b>\n━━━━━━━━━━━━━━━━━━━━━━━\n\n"
     msg += f"📥 <b>GİRİŞ:</b> {entry:.2f} TL\n"
     
     if entry_check['status'] == 'missed':
@@ -466,7 +596,15 @@ def format_hourly_signal(signal, signal_index=1):
         msg += f"   ⚠️ <i>Fiyat bundan %2+ yukarıdaysa GİRME!</i>\n"
     
     msg += f"🎯 <b>HEDEF:</b> {target:.2f} TL (<b>+{target_pct}%</b>)\n"
-    msg += f"🛑 <b>STOP:</b> {stop:.2f} TL (<b>-{stop_pct}%</b>)\n\n"
+    if t1_src: msg += f"   📐 <i>{escape_html(t1_src)}</i>\n"
+    msg += f"🛑 <b>STOP:</b> {stop:.2f} TL (<b>-{stop_pct}%</b>)\n"
+    if stop_src: msg += f"   📐 <i>{escape_html(stop_src)}</i>\n"
+    msg += "\n"
+    
+    # Saatlik Fibonacci (kısa gösterim)
+    fibonacci = signal.get('fibonacci')
+    if fibonacci:
+        msg += format_fibonacci_box(fibonacci, price)
     
     msg += "━━━━━━━━━━━━━━━━━━━━━━━\n⚠️ <b>GÜN İÇİ KURALLAR</b>\n━━━━━━━━━━━━━━━━━━━━━━━\n\n"
     msg += "🔴 Bugün kapanışa kadar SAT!\n🔴 Gece TAŞIMA!\n🔴 Stop'a sıkı uy\n🔴 17:30'a kadar kapat\n\n"
@@ -476,7 +614,7 @@ def format_hourly_signal(signal, signal_index=1):
 
 
 # ════════════════════════════════════════════════════════════
-# 4 SAATLİK SİNYAL KARTI
+# 4 SAATLİK SİNYAL KARTI (Fibonacci eklendi)
 # ════════════════════════════════════════════════════════════
 
 def format_4h_signal(signal, signal_index=1):
@@ -499,12 +637,18 @@ def format_4h_signal(signal, signal_index=1):
     ind = signal.get('indicators', {})
     
     medal = get_medal_emoji(signal_index)
+    is_dual = signal.get('is_dual_signal', False)
+    is_dual_dip = signal.get('is_dual_dip', False)
+    
+    dual_header = ""
+    if is_dual_dip: dual_header = " 💎 GÜÇLÜ DİP DÖNÜŞÜ!"
+    elif is_dual: dual_header = " ⭐ ÇİFTLİ DÖNÜŞ!"
     
     entry_check = check_entry_window(signal.get('symbol'), price)
     entry_box = format_entry_window_box(entry_check)
     
     msg = "🟣🔵🟣🔵━━━━━━━━━━━━━🔵🟣🔵🟣\n"
-    msg += f"  🕐 {medal} <b>4 SAATLİK SİNYAL #{signal_index}</b>\n"
+    msg += f"  🕐 {medal} <b>4 SAATLİK SİNYAL #{signal_index}{dual_header}</b>\n"
     msg += f"  📊 <b>İLK 4H MUM ANALİZİ</b>\n"
     msg += "🟣🔵🟣🔵━━━━━━━━━━━━━🔵🟣🔵🟣\n\n"
     
@@ -582,8 +726,9 @@ def format_4h_signal(signal, signal_index=1):
             msg += f"💡 <i>{escape_html(holding['reason'])}</i>\n"
         msg += "\n"
     
+    # 🆕 FIBONACCI HEDEFLERİ
     msg += "🟣━━━━━━━━━━━━━━━━━━━━━🟣\n"
-    msg += "💼 <b>İŞLEM PLANI - 3 HEDEF</b>\n"
+    msg += "💼 <b>İŞLEM PLANI - FIBONACCI</b>\n"
     msg += "🟣━━━━━━━━━━━━━━━━━━━━━🟣\n\n"
     
     msg += f"📥 <b>GİRİŞ:</b> {t['entry']:.2f} TL\n"
@@ -601,17 +746,31 @@ def format_4h_signal(signal, signal_index=1):
     h2 = "2-3 gün" if score >= 85 else "3-5 gün" if score >= 75 else "3-7 gün"
     h3 = "3-5 gün" if score >= 85 else "5-7 gün" if score >= 75 else "5-10 gün"
     
+    t1_src = t.get('target_1_source', '')
+    t2_src = t.get('target_2_source', '')
+    t3_src = t.get('target_3_source', '')
+    stop_src = t.get('stop_source', '')
+    
     msg += f"🎯 <b>H1:</b> {t['target_1']:.2f} TL <b>(+{t['target_1_pct']}%)</b>\n"
+    if t1_src: msg += f"   📐 <i>{escape_html(t1_src)}</i>\n"
     msg += f"   ⏰ <i>{h1}</i> | 💡 <i>%33 sat, stop'u girişe çek</i>\n\n"
     
     msg += f"🎯 <b>H2:</b> {t['target_2']:.2f} TL <b>(+{t['target_2_pct']}%)</b>\n"
+    if t2_src: msg += f"   📐 <i>{escape_html(t2_src)}</i>\n"
     msg += f"   ⏰ <i>{h2}</i> | 💡 <i>%33 sat, stop'u H1'e çek</i>\n\n"
     
     msg += f"🎯 <b>H3:</b> {t['target_3']:.2f} TL <b>(+{t['target_3_pct']}%)</b>\n"
+    if t3_src: msg += f"   📐 <i>{escape_html(t3_src)}</i>\n"
     msg += f"   ⏰ <i>{h3}</i> | 💡 <i>Kalanı sat, kârı kilitle</i>\n\n"
     
     msg += f"🛑 <b>STOP:</b> {t['stop_loss']:.2f} TL <b>(-{t['stop_pct']}%)</b>\n"
+    if stop_src: msg += f"   📐 <i>{escape_html(stop_src)}</i>\n"
     msg += f"⚖️ <b>Risk/Ödül:</b> 1/{t['risk_reward']}\n\n"
+    
+    # 🆕 FIBONACCI KUTUSU
+    fibonacci = signal.get('fibonacci')
+    if fibonacci:
+        msg += format_fibonacci_box(fibonacci, price)
     
     if signal.get('reasons'):
         msg += "🔵━━━━━━━━━━━━━━━━━━━━━🔵\n"
@@ -645,7 +804,7 @@ def format_4h_signal(signal, signal_index=1):
     kl = signal.get('key_levels', {})
     if any([kl.get('pivot'), kl.get('r1'), kl.get('ema_50')]):
         msg += "📍━━━━━━━━━━━━━━━━━━━━━📍\n"
-        msg += "<b>📍 KRİTİK SEVİYELER (4H)</b>\n"
+        msg += "<b>📍 DİĞER SEVİYELER (EMA + Pivot)</b>\n"
         msg += "📍━━━━━━━━━━━━━━━━━━━━━📍\n\n"
         if kl.get('pivot'): msg += f"{'🟢' if price > kl['pivot'] else '🔴'} Pivot : <b>{kl['pivot']:.2f}</b>\n"
         if kl.get('r1'): msg += f"{'✅' if price > kl['r1'] else '🎯'} R1    : <b>{kl['r1']:.2f}</b>\n"
@@ -657,20 +816,12 @@ def format_4h_signal(signal, signal_index=1):
         if kl.get('ema_50'): msg += f"📊 EMA50 : <b>{kl['ema_50']:.2f}</b>\n"
         msg += "\n"
     
-    msg += "🟣━━━━━━━━━━━━━━━━━━━━━🟣\n"
-    msg += "💎 <b>NEDEN 4 SAATLİK?</b>\n"
-    msg += "🟣━━━━━━━━━━━━━━━━━━━━━🟣\n\n"
-    msg += "✅ Günlükten daha erken sinyal\n"
-    msg += "✅ Saatlikten daha güvenilir\n"
-    msg += "✅ Sahte sinyal riski düşük\n"
-    msg += "✅ Swing giriş zamanlaması ideal\n\n"
-    
     msg += "🟣🔵━━━━━━━━━━━━━━━━━🔵🟣\n"
     if holding and holding.get('strategy') and holding.get('strategy') != 'YOK':
         msg += f"🕐 <i>4H ANALİZ • {escape_html(holding.get('strategy', 'SWING'))} • {escape_html(holding.get('duration', '2-5 gün'))}</i>\n"
     else:
         msg += "🕐 <i>4H ANALİZ • SWING TRADE • 2-5 gün</i>\n"
-    msg += "🤖 <i>Borsa Sinyal Bot - 4 SAATLİK</i>\n"
+    msg += "🤖 <i>Borsa Sinyal Bot - 4 SAATLİK • Fibonacci Hedefli</i>\n"
     msg += "🟣🔵🟣🔵━━━━━━━━━━━━━🔵🟣🔵🟣"
     
     return msg
@@ -683,10 +834,12 @@ def format_4h_signal(signal, signal_index=1):
 def format_4h_summary_card(signals, max_signals=5):
     if not signals: return None
     top = signals[:max_signals]
+    dual = sum(1 for s in top if s.get('is_dual_signal') or s.get('is_dual_dip'))
     
     msg = "🟣🔵🟣━━━━━━━━━━━━━━━🟣🔵🟣\n"
     msg += f"  🕐 <b>EN İYİ {len(top)} 4H SİNYAL</b>\n"
-    msg += f"  📊 <b>İlk 4H Mum Analizi</b>\n"
+    msg += f"  📊 <b>Fibonacci Hedefli</b>\n"
+    if dual > 0: msg += f"  💎 <b>{dual} ÇİFTLİ DÖNÜŞ VAR!</b>\n"
     msg += "🟣🔵🟣━━━━━━━━━━━━━━━🟣🔵🟣\n\n"
     
     for i, s in enumerate(top, 1):
@@ -698,13 +851,17 @@ def format_4h_summary_card(signals, max_signals=5):
         t1p = t.get('target_1_pct', 0)
         medal = get_medal_emoji(i)
         
+        dual_tag = ""
+        if s.get('is_dual_dip'): dual_tag = " 💎"
+        elif s.get('is_dual_signal'): dual_tag = " ⭐"
+        
         if sc >= 85: stars = "⭐⭐⭐⭐⭐"
         elif sc >= 75: stars = "⭐⭐⭐⭐"
         elif sc >= 65: stars = "⭐⭐⭐"
         else: stars = "⭐⭐"
         
         bar = "█" * int(sc / 10) + "░" * (10 - int(sc / 10))
-        msg += f"{medal} <b>{sym}</b> 🕐 {stars}\n"
+        msg += f"{medal} <b>{sym}</b> 🕐{dual_tag} {stars}\n"
         msg += f"   💯 <b>{sc}/100</b> <code>{bar}</code>\n"
         msg += f"   💰 {pr:.2f} → 🎯 <b>{t1:.2f}</b> (<b>+{t1p}%</b>)\n\n"
     
@@ -715,7 +872,7 @@ def format_4h_summary_card(signals, max_signals=5):
 
 
 # ════════════════════════════════════════════════════════════
-# GÖNDERME FONKSİYONLARI (🌟 sayacı kaldırıldı)
+# GÖNDERME FONKSİYONLARI
 # ════════════════════════════════════════════════════════════
 
 async def send_signal_async(signal, signal_index=1):
@@ -733,9 +890,11 @@ async def send_multiple_signals_async(signals, max_signals=5):
         return 0
     
     tavan = sum(1 for s in signals[:max_signals] if is_tavan_adayi(s))
+    dual = sum(1 for s in signals[:max_signals] if s.get('is_dual_signal') or s.get('is_dual_dip'))
     
     summary = f"🔍 <b>BIST TARAMASI</b>\n━━━━━━━━━━━━━━━━━━━━━━━\n📊 <b>{len(signals)}</b> sinyal bulundu\n🏆 En iyi <b>{min(len(signals),max_signals)}</b> gönderiliyor\n"
     if tavan > 0: summary += f"⚡ <b>{tavan} TAVAN ADAYI!</b>\n"
+    if dual > 0: summary += f"💎 <b>{dual} ÇİFTLİ DÖNÜŞ!</b>\n"
     summary += f"\n⏰ {tr_now().strftime('%H:%M - %d.%m.%Y')}"
     
     await send_message_async(summary.strip())
@@ -827,7 +986,7 @@ def send_momentum_warning(symbol, current_price, entry_price, reason):
 # ════════════════════════════════════════════════════════════
 
 async def send_test_message_async():
-    msg = f"🎉 <b>BOT AKTİF</b>\n━━━━━━━━━━━━━━━━━━━━━━━\n✅ SWING + SAATLİK (3 TEYİT) + 4H\n⚡ Tavan adayı tespiti\n🎯 AL PENCERESİ uyarısı\n📊 EMA 5/22/50/200 sistemi\n👑 Golden Cross tespiti\n📐 BIST 100 Fibonacci destek/direnç\n⏰ {tr_now().strftime('%H:%M - %d.%m.%Y')}"
+    msg = f"🎉 <b>BOT AKTİF v3</b>\n━━━━━━━━━━━━━━━━━━━━━━━\n✅ SWING + SAATLİK (3 TEYİT) + 4H\n⚡ Tavan adayı tespiti\n🎯 AL PENCERESİ uyarısı\n📊 EMA 5/22/50/200 sistemi\n👑 Golden Cross tespiti\n📐 <b>FIBONACCI HEDEFLERİ (Normal + Extended)</b>\n💎 WT+SMI dual onay\n⏰ {tr_now().strftime('%H:%M - %d.%m.%Y')}"
     return await send_message_async(msg)
 
 def send_test_message():
