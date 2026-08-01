@@ -3,8 +3,9 @@ name: Telegram Message Listener
 on:
   workflow_dispatch:
   schedule:
-    # BIST açık saatlerinde her 3 dakikada bir (UTC bazlı)
-    - cron: '*/3 7-15 * * 1-5'
+    # BIST açık saatlerinde her 10 dakikada bir (UTC bazlı)
+    # UTC 7-15 = Türkiye 10-18
+    - cron: '*/10 7-15 * * 1-5'
 
 permissions:
   contents: write
