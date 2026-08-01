@@ -1,5 +1,5 @@
 """
-Profesyonel Zamanlayici - SON HAL v2
+Profesyonel Zamanlayici v3 - FIBONACCI HEDEFLERI
 YENI SAATLER: 10:30, 12:00, 14:00, 16:00, 18:15, 19:00
 """
 
@@ -685,6 +685,7 @@ def job_weekly_report():
 
 
 def get_4h_candidates_for_tomorrow():
+    """4H mum adaylarını bul - Fibonacci hedefli"""
     try:
         from services.tradingview_fetcher import fetch_stock_tv, TV_AVAILABLE
         from services.analyzer import analyze_stock
@@ -717,6 +718,7 @@ def get_4h_candidates_for_tomorrow():
                 if rvol < 1.2:
                     continue
                 
+                # signal_engine artık Fibonacci hedefleri üretiyor
                 signal = generate_signal(symbol, analysis, df)
                 if not signal or signal['score'] < 65:
                     continue
@@ -727,10 +729,11 @@ def get_4h_candidates_for_tomorrow():
                     'score': signal['score'],
                     'rvol': rvol,
                     'rsi': analysis.get('rsi', 0),
-                    'targets': signal.get('targets', {}),
+                    'targets': signal.get('targets', {}),  # Fibonacci hedefleri
                     'reasons': signal.get('reasons', [])[:3],
                     'is_dual_signal': signal.get('is_dual_signal', False),
-                    'is_dual_dip': signal.get('is_dual_dip', False)
+                    'is_dual_dip': signal.get('is_dual_dip', False),
+                    'fibonacci': signal.get('fibonacci')  # 🆕 Fibonacci detayları
                 })
             except:
                 continue
@@ -860,7 +863,7 @@ def format_active_positions_review():
 
 
 def job_end_of_day_report():
-    log_event("GUN SONU RAPORU v2")
+    log_event("GUN SONU RAPORU v3 (Fibonacci)")
     
     try:
         import yfinance as yf
@@ -951,7 +954,8 @@ def job_end_of_day_report():
                         'rvol': candidate['rvol'],
                         'candle_strength': candidate['candle_strength'],
                         'tomorrow_score': ts,
-                        'targets': signal.get('targets', {})
+                        'targets': signal.get('targets', {}),
+                        'fibonacci': signal.get('fibonacci')  # 🆕
                     })
             except: continue
         
@@ -981,21 +985,28 @@ def job_end_of_day_report():
             msg4 += "\n"
         
         if top_5_daily:
-            msg4 += "YARIN ICIN GUNLUK MUM ADAYLARI\n\n"
+            msg4 += "YARIN ICIN GUNLUK MUM ADAYLARI (Fibonacci)\n\n"
             for i, t in enumerate(top_5_daily, 1):
                 msg4 += f"{i}. {t['symbol']}\n"
                 msg4 += f"   Kapanis: {t['price']:.2f} TL\n"
                 msg4 += f"   Bugun: +%{t['daily_change']:.2f} | Hacim: {t['rvol']:.1f}x\n"
                 targets = t.get('targets', {})
                 if targets.get('target_1'):
-                    msg4 += f"   Hedef: {targets['target_1']:.2f} (+{targets.get('target_1_pct',0)}%)\n"
+                    t1_src = targets.get('target_1_source', '')
+                    msg4 += f"   H1: {targets['target_1']:.2f} (+{targets.get('target_1_pct',0)}%) [{t1_src}]\n"
+                if targets.get('target_2'):
+                    t2_src = targets.get('target_2_source', '')
+                    msg4 += f"   H2: {targets['target_2']:.2f} (+{targets.get('target_2_pct',0)}%) [{t2_src}]\n"
+                if targets.get('stop_loss'):
+                    stop_src = targets.get('stop_source', '')
+                    msg4 += f"   Stop: {targets['stop_loss']:.2f} (-{targets.get('stop_pct',0)}%) [{stop_src}]\n"
                 msg4 += "\n"
         
         send_message(msg4)
         
         candidates_4h = get_4h_candidates_for_tomorrow()
         
-        msg5 = "4H MUM ONERILERI\nKapanis 4H mum analizi\n\n"
+        msg5 = "4H MUM ONERILERI (Fibonacci)\nKapanis 4H mum analizi\n\n"
         
         if candidates_4h:
             top_5_4h = candidates_4h[:5]
@@ -1013,9 +1024,21 @@ def job_end_of_day_report():
                 
                 targets = c.get('targets', {})
                 if targets.get('target_1'):
-                    msg5 += f"   Hedef: {targets['target_1']:.2f} (+{targets.get('target_1_pct',0)}%)\n"
+                    t1_src = targets.get('target_1_source', '')
+                    msg5 += f"   H1: {targets['target_1']:.2f} (+{targets.get('target_1_pct',0)}%) [{t1_src}]\n"
+                if targets.get('target_2'):
+                    t2_src = targets.get('target_2_source', '')
+                    msg5 += f"   H2: {targets['target_2']:.2f} (+{targets.get('target_2_pct',0)}%) [{t2_src}]\n"
                 if targets.get('stop_loss'):
-                    msg5 += f"   Stop: {targets['stop_loss']:.2f}\n"
+                    stop_src = targets.get('stop_source', '')
+                    msg5 += f"   Stop: {targets['stop_loss']:.2f} (-{targets.get('stop_pct',0)}%) [{stop_src}]\n"
+                
+                # Fibonacci bilgisi
+                fib = c.get('fibonacci')
+                if fib:
+                    zone = fib.get('current_zone', '')
+                    if zone:
+                        msg5 += f"   Bolge: {zone}\n"
                 msg5 += "\n"
             
             daily_symbols = set(t['symbol'] for t in top_5_daily)
@@ -1090,15 +1113,15 @@ def setup_scheduler():
 def start_scheduler():
     scheduler = setup_scheduler()
     try:
-        send_message(f"BOT AKTIF v2 - {tr_now().strftime('%H:%M - %d.%m.%Y')}\nYeni saatler: 10:30, 12:00, 14:00, 16:00, 18:15, 19:00")
+        send_message(f"BOT AKTIF v3 (Fibonacci) - {tr_now().strftime('%H:%M - %d.%m.%Y')}\nYeni saatler: 10:30, 12:00, 14:00, 16:00, 18:15, 19:00")
     except: pass
     try: scheduler.start()
     except (KeyboardInterrupt, SystemExit): print("Durduruldu")
 
 
 if __name__ == "__main__":
-    print(f"\nZAMANLAYICI v2 - {tr_now().strftime('%H:%M')}")
-    print("\nYENI PROGRAM:")
+    print(f"\nZAMANLAYICI v3 - {tr_now().strftime('%H:%M')}")
+    print("\nYENI PROGRAM (FIBONACCI HEDEFLI):")
     print("  09:45 -> Sabah hazirlik")
     print("  09:55 -> Pre-market rapor")
     print("  10:30 -> Acilis taramasi")
