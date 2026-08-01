@@ -1,7 +1,7 @@
 """
-Profesyonel Sinyal Motoru - SON HAL v2
+Profesyonel Sinyal Motoru v3 - FIBONACCI HEDEFLERİ
 EMA 5/22 + Golden Cross + Güçlü Mum + Dip Dönüşü
-+ HİBRİT STOP (ATR + EMA22 + Son dip)
++ FIBONACCI HEDEFLER (Normal + Extended)
 + GÜÇLÜ WT+SMI DUAL ONAY
 """
 
@@ -126,7 +126,6 @@ def score_momentum(analysis):
 
 
 def score_trend(analysis):
-    """EMA sistemi zaman dilimine göre değişir"""
     score = 0; reasons = []
     c = analysis.get('current_price')
     e5 = analysis.get('ema_5'); e22 = analysis.get('ema_22')
@@ -171,7 +170,6 @@ def score_trend(analysis):
         
         return min(score, 30), reasons
     
-    # GÜNLÜK / 4H
     if all(v is not None for v in [c, e5, e22, e50]):
         if c > e5 > e22 > e50: 
             score += 10; reasons.append({'icon':'🏆','title':'MÜKEMMEL TREND','detail':'Fiyat>EMA5>EMA22>EMA50','meaning':'Tüm yukarı'})
@@ -261,10 +259,7 @@ def score_wavetrend(analysis):
 
 
 def score_dual_confirmation(analysis):
-    """
-    🆕 GÜÇLENDİRİLMİŞ WT+SMI DUAL ONAY
-    Aynı anda dönerse çok değerli - puan artırıldı
-    """
+    """WT+SMI dual onay - güçlendirilmiş"""
     score = 0; reasons = []
     is_dual_signal = False
     is_dual_dip = False
@@ -277,12 +272,10 @@ def score_dual_confirmation(analysis):
     if not all(v is not None for v in [wt1, wt2, smi, ss]): 
         return 0, [], False, False
     
-    # AYNI ANDA KESİŞİM (En değerli!)
     wt_cross_up = (pw1 is not None and pw2 is not None and pw1 <= pw2 and wt1 > wt2)
     smi_cross_up = (psmi is not None and pss is not None and psmi <= pss and smi > ss)
     
     if wt_cross_up and smi_cross_up:
-        # DİP BÖLGEDE ÇİFT KESİŞİM = ALTIN SİNYAL
         if wt1 < -30 and smi < -30:
             score = 10
             is_dual_dip = True
@@ -290,7 +283,7 @@ def score_dual_confirmation(analysis):
             reasons.append({
                 'icon':'💎',
                 'title':'GÜÇLÜ DİP DÖNÜŞÜ! (WT+SMI)',
-                'detail':f'Dipte çift kesişim',
+                'detail':'Dipte çift kesişim',
                 'meaning':'ALTIN FIRSAT - Çok nadir!'
             })
         else:
@@ -302,7 +295,6 @@ def score_dual_confirmation(analysis):
                 'detail':'İkisi aynı anda kesti',
                 'meaning':'GÜÇLÜ teyit - kaliteli sinyal!'
             })
-    # İkisi de pozitif ama kesişim yok
     elif wt1 > wt2 and smi > ss:
         if wt1 < -30 and smi < -30:
             score = 5
@@ -437,17 +429,13 @@ def is_already_tavan(analysis):
         return False
     dc = ((cp - pc) / pc) * 100
     return dc >= 9.5
-    # ════════════════════════════════════════════════════════════
-# TOPLAM PUAN
-# ════════════════════════════════════════════════════════════
+
 
 def calculate_total_score(analysis):
     if is_already_tavan(analysis):
         return {
-            'total': 0,
-            'tavan_skip': True,
-            'is_dual_signal': False,
-            'is_dual_dip': False,
+            'total': 0, 'tavan_skip': True,
+            'is_dual_signal': False, 'is_dual_dip': False,
             'breakdown': {
                 'volume': {'score': 0, 'max': 25},
                 'momentum': {'score': 0, 'max': 22},
@@ -467,10 +455,7 @@ def calculate_total_score(analysis):
     vwp_s, vwp_r = score_vwap_pivot(analysis)
     brk_s, brk_r = score_breakout_candle(analysis)
     liq_s, liq_r = score_liquidity(analysis)
-    
-    # 🆕 DUAL onay artık is_dual_signal ve is_dual_dip döndürüyor
     dual_s, dual_r, is_dual_signal, is_dual_dip = score_dual_confirmation(analysis)
-    
     pos_s, pos_r = score_position_bonus(analysis)
     vt_s, vt_r = score_volume_trend(analysis)
     th_s, th_r = score_trend_health(analysis)
@@ -510,10 +495,8 @@ def calculate_total_score(analysis):
     total = max(0, min(total, 100))
 
     return {
-        'total': total,
-        'tavan_skip': False,
-        'is_dual_signal': is_dual_signal,
-        'is_dual_dip': is_dual_dip,
+        'total': total, 'tavan_skip': False,
+        'is_dual_signal': is_dual_signal, 'is_dual_dip': is_dual_dip,
         'breakdown': {
             'volume': {'score': vol_s, 'max': 25},
             'momentum': {'score': mom_s, 'max': 22},
@@ -528,112 +511,77 @@ def calculate_total_score(analysis):
 
 
 # ════════════════════════════════════════════════════════════
-# 🆕 HİBRİT STOP + HEDEFLER (ATR + EMA22 + Son dip)
+# 🆕 HEDEF HESABI - FIBONACCI (Ana yöntem) + ATR (Fallback)
 # ════════════════════════════════════════════════════════════
 
-def calculate_targets(cp, atr, analysis, df=None):
+def calculate_targets_fibonacci(cp, analysis, df=None):
     """
-    HİBRİT STOP HESABI:
-    - Aday 1: ATR × 2.0 altı (volatilite bazlı)
-    - Aday 2: EMA22 altı %1 marj (teknik destek)
-    - Aday 3: Son 5 mumun dibi (alıcı korunma seviyesi)
-    → En yakın olanı stop
-    → Min %2.5, Max %5 sınır
-    
-    HEDEFLER:
-    - ATR bazlı, ama biraz daha genişletilmiş
-    - Pivot direnç seviyeleri hedef olarak da kullanılabilir
+    Fibonacci bazlı hedef ve stop hesabı (ANA YÖNTEM)
+    Analysis içindeki fibonacci verisini kullanır
     """
+    fibonacci = analysis.get('fibonacci')
     
-    # ═══════════════════════════════════════
-    # HİBRİT STOP HESABI
-    # ═══════════════════════════════════════
-    stop_candidates = []
+    # Fibonacci verisi varsa onu kullan
+    if fibonacci and fibonacci.get('targets'):
+        return fibonacci['targets']
     
-    # ADAY 1: ATR bazlı (ATR × 2.0)
-    if atr and atr > 0:
-        atr_stop = cp - (atr * 2.0)
-        atr_pct = ((cp - atr_stop) / cp) * 100
-        stop_candidates.append({
-            'price': atr_stop,
-            'pct': atr_pct,
-            'source': 'ATR × 2.0'
-        })
+    # Fallback: ATR bazlı hesap (Fibonacci yoksa)
+    return calculate_targets_atr_fallback(cp, analysis, df)
+
+
+def calculate_targets_atr_fallback(cp, analysis, df=None):
+    """ATR bazlı fallback hedef/stop (Fibonacci hesaplanamazsa)"""
+    atr = analysis.get('atr')
     
-    # ADAY 2: EMA22 altı (%1 marj)
-    ema22 = analysis.get('ema_22')
-    if ema22 and ema22 < cp:
-        ema22_stop = ema22 * 0.99  # EMA22'nin %1 altı
-        ema22_pct = ((cp - ema22_stop) / cp) * 100
-        stop_candidates.append({
-            'price': ema22_stop,
-            'pct': ema22_pct,
-            'source': 'EMA22 altı'
-        })
-    
-    # ADAY 3: Son 5 mumun dibi
-    if df is not None and len(df) >= 5:
-        last_5_low = df['low'].tail(5).min()
-        if last_5_low < cp:
-            dip_stop = last_5_low * 0.995  # dipin %0.5 altı
-            dip_pct = ((cp - dip_stop) / cp) * 100
-            stop_candidates.append({
-                'price': dip_stop,
-                'pct': dip_pct,
-                'source': 'Son 5 mum dibi'
-            })
-    
-    # EN YAKIN stop'u seç (en küçük yüzde)
-    if stop_candidates:
-        # Min %2.5 ve max %5 filtre uygula
-        valid = [s for s in stop_candidates if 2.5 <= s['pct'] <= 5.0]
-        
-        if valid:
-            # Geçerli aday varsa en yakınını al
-            best_stop = min(valid, key=lambda x: x['pct'])
-        else:
-            # Hiçbiri aralıkta değilse en yakını al ama sınıra çek
-            best_stop = min(stop_candidates, key=lambda x: x['pct'])
-            if best_stop['pct'] < 2.5:
-                best_stop = {'price': cp * 0.975, 'pct': 2.5, 'source': 'Min sınır (%2.5)'}
-            elif best_stop['pct'] > 5.0:
-                best_stop = {'price': cp * 0.95, 'pct': 5.0, 'source': 'Max sınır (%5)'}
-        
-        stop_price = round(best_stop['price'], 2)
-        stop_pct_final = round(best_stop['pct'], 2)
-        stop_source = best_stop['source']
-    else:
-        # Fallback: %3 stop
-        stop_price = round(cp * 0.97, 2)
-        stop_pct_final = 3.0
-        stop_source = 'Fallback %3'
-    
-    # ═══════════════════════════════════════
-    # HEDEFLER (ATR bazlı, biraz genişletildi)
-    # ═══════════════════════════════════════
     if not atr or atr <= 0:
         ap = 1.5
     else:
         ap = max(0.8, min((atr / cp) * 100, 5))
     
-    # Hedefler biraz daha geniş
     t1 = round(cp * (1 + ap * 2.5 / 100), 2)
     t2 = round(cp * (1 + ap * 4.5 / 100), 2)
     t3 = round(cp * (1 + ap * 7.0 / 100), 2)
     
-    # Pivot direnç seviyeleri hedef olarak kullan (uygunsa)
-    r1 = analysis.get('r1')
-    r2 = analysis.get('r2')
-    r3 = analysis.get('r3')
+    # Stop hesabı
+    stop_candidates = []
     
-    if r1 and r1 > cp and r1 > t1 and (r1 - cp) / cp * 100 < 5:
-        t1 = round(r1, 2)
-    if r2 and r2 > cp and r2 > t2:
-        t2 = round(r2, 2)
-    if r3 and r3 > cp and r3 > t3:
-        t3 = round(r3, 2)
+    if atr and atr > 0:
+        atr_stop = cp - (atr * 2.0)
+        atr_pct = ((cp - atr_stop) / cp) * 100
+        stop_candidates.append({'price': atr_stop, 'pct': atr_pct, 'source': 'ATR × 2.0'})
     
-    # Sıralama kontrolü (t1 < t2 < t3)
+    ema22 = analysis.get('ema_22')
+    if ema22 and ema22 < cp:
+        ema22_stop = ema22 * 0.99
+        ema22_pct = ((cp - ema22_stop) / cp) * 100
+        stop_candidates.append({'price': ema22_stop, 'pct': ema22_pct, 'source': 'EMA22 alti'})
+    
+    if df is not None and len(df) >= 5:
+        last_5_low = df['low'].tail(5).min()
+        if last_5_low < cp:
+            dip_stop = last_5_low * 0.995
+            dip_pct = ((cp - dip_stop) / cp) * 100
+            stop_candidates.append({'price': dip_stop, 'pct': dip_pct, 'source': 'Son 5 mum dibi'})
+    
+    if stop_candidates:
+        valid = [s for s in stop_candidates if 2.5 <= s['pct'] <= 5.0]
+        if valid:
+            best_stop = min(valid, key=lambda x: x['pct'])
+        else:
+            best_stop = min(stop_candidates, key=lambda x: x['pct'])
+            if best_stop['pct'] < 2.5:
+                best_stop = {'price': cp * 0.975, 'pct': 2.5, 'source': 'Min sinir'}
+            elif best_stop['pct'] > 5.0:
+                best_stop = {'price': cp * 0.95, 'pct': 5.0, 'source': 'Max sinir'}
+        
+        stop_price = round(best_stop['price'], 2)
+        stop_pct_final = round(best_stop['pct'], 2)
+        stop_source = best_stop['source']
+    else:
+        stop_price = round(cp * 0.97, 2)
+        stop_pct_final = 3.0
+        stop_source = 'Fallback %3'
+    
     if t2 <= t1: t2 = round(t1 * 1.025, 2)
     if t3 <= t2: t3 = round(t2 * 1.030, 2)
     
@@ -641,21 +589,29 @@ def calculate_targets(cp, atr, analysis, df=None):
     t2p = round(((t2 - cp) / cp) * 100, 2)
     t3p = round(((t3 - cp) / cp) * 100, 2)
     
-    # Risk/Ödül
     risk = cp - stop_price
     rr = round((t2 - cp) / risk, 2) if risk > 0 else 0
     
     return {
         'entry': cp,
-        'target_1': t1, 'target_1_pct': t1p,
-        'target_2': t2, 'target_2_pct': t2p,
-        'target_3': t3, 'target_3_pct': t3p,
+        'target_1': t1, 'target_1_pct': t1p, 'target_1_source': 'ATR bazli',
+        'target_2': t2, 'target_2_pct': t2p, 'target_2_source': 'ATR bazli',
+        'target_3': t3, 'target_3_pct': t3p, 'target_3_source': 'ATR bazli',
         'stop_loss': stop_price,
         'stop_pct': stop_pct_final,
-        'stop_source': stop_source,  # 🆕 Stop'un hangi yönteme dayandığı
+        'stop_source': stop_source,
         'risk_reward': rr,
+        'method': 'atr_fallback',
         'atr_value': round(atr, 4) if atr else None
     }
+
+
+def calculate_targets(cp, atr, analysis, df=None):
+    """
+    ANA HEDEF FONKSİYONU
+    Öncelik: Fibonacci → ATR fallback
+    """
+    return calculate_targets_fibonacci(cp, analysis, df)
 
 
 def generate_warnings(analysis):
@@ -693,6 +649,22 @@ def generate_warnings(analysis):
                 'detail':'Uzun vade zayıflık','action':'Dikkatli ol, ama fırsat da olabilir'
             })
 
+    # 🆕 Fibonacci uyarısı
+    fibonacci = analysis.get('fibonacci')
+    if fibonacci:
+        if fibonacci.get('is_above_zirve'):
+            warnings.append({
+                'level':'INFO','icon':'📈','title':'ZİRVE ÜSTÜ - Extended Bölge',
+                'detail':'Fiyat 90 mum zirvesini kırdı',
+                'action':'Extended Fibonacci hedefler kullaniliyor'
+            })
+        elif fibonacci.get('is_below_dip'):
+            warnings.append({
+                'level':'HIGH','icon':'⚠️','title':'DİP ALTI - Riskli Bölge',
+                'detail':'Fiyat 90 mum dibinin altında',
+                'action':'Cok dikkatli ol'
+            })
+
     return warnings, suggestions
 
 
@@ -725,7 +697,7 @@ def generate_signal(symbol, analysis, history_df=None):
     si = determine_strength(ts)
     atr = analysis.get('atr')
     
-    # 🆕 history_df hibrit stop hesabı için kullanılıyor
+    # 🆕 FIBONACCI HEDEFLERİ (ana yöntem)
     targets = calculate_targets(cp, atr, analysis, history_df)
     
     warnings, suggestions = generate_warnings(analysis)
@@ -761,9 +733,10 @@ def generate_signal(symbol, analysis, history_df=None):
         'breakouts':analysis.get('breakouts',[]),
         'momentum_status':analysis.get('momentum_status',{}),
         'indicators':ind,
-        # 🆕 Dual signal flag'leri
         'is_dual_signal': sd.get('is_dual_signal', False),
-        'is_dual_dip': sd.get('is_dual_dip', False)
+        'is_dual_dip': sd.get('is_dual_dip', False),
+        # 🆕 Fibonacci verisi (bot.py kartlarda kullanacak)
+        'fibonacci': analysis.get('fibonacci')
     }
 
 
@@ -773,4 +746,4 @@ def format_signal_message(signal):
 
 
 if __name__ == "__main__":
-    print("✅ Signal Engine v2 - Hibrit Stop + Güçlü Dual Onay")
+    print("✅ Signal Engine v3 - FIBONACCI hedefler + Extended Fibonacci")
