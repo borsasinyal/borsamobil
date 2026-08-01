@@ -1,7 +1,9 @@
 """
-Profesyonel Zamanlayıcı - SON HAL
-Saatlik zaman kısıtı (11:00-17:00) + BIST 100 filtre + Haftalık rapor + Fibonacci
-20/50 KESİŞİM TAMAMEN KALDIRILDI
+Profesyonel Zamanlayıcı - SON HAL v2
+YENİ SAATLER: 10:30, 12:00, 14:00, 16:00, 18:15, 19:00
++ Gün sonu raporunda 4H önerileri
++ Aktif takipteki hisselerin durumu yorumu
++ Cumartesi haftalık rapor
 """
 
 import sys
@@ -31,6 +33,10 @@ def log_event(msg):
     print(f"[{tr_now().strftime('%Y-%m-%d %H:%M:%S')}] {msg}")
 
 
+# ════════════════════════════════════════════════════════════
+# TEMEL İŞLER (sabah hazırlık, pre-market, açılış)
+# ════════════════════════════════════════════════════════════
+
 def job_morning_preparation():
     log_event("🌅 SABAH HAZIRLIK")
     send_message(f"""🌅 <b>SABAH HAZIRLIK BAŞLADI</b>
@@ -45,7 +51,7 @@ def job_morning_preparation():
         fetch_all_daily(symbols_list=BIST_SYMBOLS, delay=0.05)
         send_message(f"""✅ <b>SABAH HAZIRLIK TAMAM</b>
 ✅ Veriler güncellendi
-🚀 İlk tarama: <b>10:15</b>
+🚀 İlk tarama: <b>10:30</b>
 <i>Bugün güzel kazançlar 💪</i>""")
     except Exception as e:
         send_message(f"❌ <b>Hata</b>\n<code>{str(e)[:200]}</code>")
@@ -72,15 +78,18 @@ def job_premarket_report():
 
 
 def job_market_open_scan():
-    log_event("🔔 AÇILIŞ")
-    send_message(f"""🔔 <b>BORSA AÇILDI</b>
+    """AÇILIŞ TARAMASI - 10:30 (yeni saat)"""
+    log_event("🔔 AÇILIŞ TARAMASI (10:30)")
+    send_message(f"""🔔 <b>AÇILIŞ TARAMASI</b>
+━━━━━━━━━━━━━━━━━━━━━━━
 ⏰ {tr_now().strftime('%H:%M')}
-🔍 Tarama başlıyor...""")
+📊 İlk 30 dk volatilite geçti
+🔍 Sinyaller aranıyor...""")
     if not is_weekday(): return
     try:
         signals = scan_all_stocks(min_score=60, save_to_db=True, verbose=False)
         if not signals:
-            send_message(f"🔔 <b>AÇILIŞ TARAMASI</b>\n⚠️ Sinyal yok\n<i>11:00'de tekrar</i>")
+            send_message(f"🔔 <b>AÇILIŞ TARAMASI</b>\n⚠️ Sinyal yok\n<i>12:00'de tekrar</i>")
             return
         send_message(f"🔔 <b>AÇILIŞ - {len(signals)} SİNYAL!</b>\n📩 Gönderiliyor...")
         send_multiple_signals(signals, max_signals=5)
@@ -88,8 +97,40 @@ def job_market_open_scan():
         send_message(f"❌ <b>Hata</b>\n<code>{str(e)[:200]}</code>")
 
 
+# ════════════════════════════════════════════════════════════
+# 🆕 2 SAATLİK TARAMALAR (12:00 ve 16:00)
+# ════════════════════════════════════════════════════════════
+
+def job_full_scan_2h():
+    """12:00 ve 16:00 için 2 saatlik günlük tarama"""
+    log_event("📊 2 SAATLİK TARAMA")
+    hour = tr_now().hour
+    scan_label = "ÖĞLE ÖNCESİ" if hour < 14 else "ÖĞLEDEN SONRA"
+    
+    send_message(f"""📊 <b>{scan_label} TARAMA</b>
+━━━━━━━━━━━━━━━━━━━━━━━
+⏰ {tr_now().strftime('%H:%M')}
+🔍 Günlük tarama başlıyor...""")
+    
+    if not is_weekday(): return
+    try:
+        signals = scan_all_stocks(min_score=60, save_to_db=True, verbose=False)
+        if not signals:
+            send_message(f"📊 <b>{scan_label} TARAMA</b>\n⚠️ Sinyal yok")
+            return
+        send_message(f"📊 <b>{scan_label} - {len(signals)} SİNYAL!</b>\n📩 Kartlar geliyor...")
+        send_multiple_signals(signals, max_signals=5)
+    except Exception as e:
+        send_message(f"❌ <b>Hata</b>\n<code>{str(e)[:200]}</code>")
+
+
+# ════════════════════════════════════════════════════════════
+# ESKİ HIZLI + FULL TARAMA (manuel için, cron'dan kalktı)
+# ════════════════════════════════════════════════════════════
+
 def job_quick_scan():
-    log_event("⚡ HIZLI TARAMA")
+    """Manuel çalıştırma için - cron'dan kaldırıldı"""
+    log_event("⚡ HIZLI TARAMA (MANUEL)")
     send_message(f"⚡ <b>HIZLI TARAMA</b>\n⏰ {tr_now().strftime('%H:%M')}")
     try:
         signals = scan_all_stocks(min_score=65, save_to_db=False, verbose=False)
@@ -103,14 +144,15 @@ def job_quick_scan():
 
 
 def job_full_scan():
-    log_event("🔍 TAM TARAMA")
+    """Manuel çalıştırma için - cron'dan kaldırıldı"""
+    log_event("🔍 TAM TARAMA (MANUEL)")
     send_message(f"""🔍 <b>TAM TARAMA</b>
 ⏰ {tr_now().strftime('%H:%M')}
-📊 567 hisse taranıyor...""")
+📊 Hisseler taranıyor...""")
     try:
         signals = scan_all_stocks(min_score=60, save_to_db=True, verbose=False)
         if not signals:
-            send_message(f"🔍 <b>TAM TARAMA</b>\n⚠️ Sinyal yok\n<i>Sonraki saatte tekrar</i>")
+            send_message(f"🔍 <b>TAM TARAMA</b>\n⚠️ Sinyal yok")
             return
         send_message(f"🔍 <b>{len(signals)} SİNYAL!</b>\n📩 Kartlar geliyor...")
         send_multiple_signals(signals, max_signals=5)
@@ -119,36 +161,34 @@ def job_full_scan():
 
 
 # ════════════════════════════════════════════════════════════
-# SAATLİK TARAMA (ZAMAN KISITI: 11:00-17:00)
+# SAATLİK TARAMA (MANUEL - Cron'dan kaldırıldı)
 # ════════════════════════════════════════════════════════════
 
 def job_hourly_scan():
-    """SAATLİK TARAMA - Zaman kısıtı: 11:00-17:00 arası"""
-    current_hour = tr_now().hour
-    
-    if current_hour < 11:
-        log_event(f"⏭️ SAATLİK ATLANDI - Saat {current_hour}:00 (11:00 öncesi)")
-        return
-    
-    if current_hour > 17:
-        log_event(f"⏭️ SAATLİK ATLANDI - Saat {current_hour}:00 (17:00 sonrası)")
-        return
-    
-    log_event(f"⚡ SAATLİK TARAMA (Saat: {current_hour}:00)")
+    """MANUEL çalıştırma için - tavan adayı ararken tıkla"""
+    log_event(f"⚡ SAATLİK TARAMA (MANUEL) - Saat: {tr_now().hour}")
     try:
         from telegram_bot.bot import send_hourly_signals
         hourly_signals = scan_hourly_stocks(min_score=68, symbols_list=BIST_SYMBOLS[:200])
         if hourly_signals:
             log_event(f"⚡ {len(hourly_signals)} saatlik sinyal (3 teyit onaylı)")
             send_hourly_signals(hourly_signals, max_signals=3)
+        else:
+            send_message(f"⚡ <b>SAATLİK TARAMA</b>\n⚠️ Güçlü saatlik sinyal yok")
     except Exception as e:
         log_event(f"⚠️ Saatlik hata: {e}")
 
 
+# ════════════════════════════════════════════════════════════
+# 4 SAATLİK TARAMA - 2 kez (14:00 ve 18:15)
+# ════════════════════════════════════════════════════════════
+
 def job_4h_scan():
-    log_event("🕐 4 SAATLİK TARAMA BAŞLADI")
+    """1. 4H MUM - 14:00 tarama (10-14 mumu kapandı)"""
+    log_event("🕐 1. 4H TARAMA (14:00)")
     send_message(f"""🕐🕐🕐━━━━━━━━━━━━━━━━━🕐🕐🕐
-   <b>4 SAATLİK TARAMA</b>
+   <b>1. 4 SAATLİK TARAMA</b>
+   <b>(Öğle Mumu Analizi)</b>
 🕐🕐🕐━━━━━━━━━━━━━━━━━🕐🕐🕐
 
 ⏰ {tr_now().strftime('%H:%M - %d.%m.%Y')}
@@ -162,7 +202,7 @@ def job_4h_scan():
             log_event(f"🕐 {len(signals_4h)} adet 4H sinyal bulundu")
             send_4h_signals(signals_4h, max_signals=5)
         else:
-            send_message(f"""🕐 <b>4 SAATLİK TARAMA</b>
+            send_message(f"""🕐 <b>1. 4 SAATLİK TARAMA</b>
 ━━━━━━━━━━━━━━━━━━━━━━━
 ⚠️ Güçlü 4H sinyal bulunamadı""")
     except Exception as e:
@@ -170,12 +210,40 @@ def job_4h_scan():
         send_message(f"❌ <b>4H Tarama Hatası</b>\n<code>{str(e)[:200]}</code>")
 
 
+def job_4h_scan_evening():
+    """2. 4H MUM - 18:15 tarama (14-18 mumu kapandı - YARIN İÇİN)"""
+    log_event("🕐 2. 4H TARAMA (18:15 - YARIN İÇİN)")
+    send_message(f"""🕐🌆🕐━━━━━━━━━━━━━━━━━🕐🌆🕐
+   <b>2. 4 SAATLİK TARAMA</b>
+   <b>(KAPANIŞ MUMU - YARIN İÇİN)</b>
+🕐🌆🕐━━━━━━━━━━━━━━━━━🕐🌆🕐
+
+⏰ {tr_now().strftime('%H:%M - %d.%m.%Y')}
+📊 2. 4H mum kapandı (14:00-18:00)
+🔍 {len(BIST_SYMBOLS)} hisse taranıyor...
+<i>Kapanış mumu = en güvenilir 4H sinyali!</i>
+<i>Yarın sabah için hazır liste</i>""")
+    try:
+        from telegram_bot.bot import send_4h_signals
+        signals_4h = scan_4h_stocks(min_score=65, symbols_list=BIST_SYMBOLS)
+        if signals_4h:
+            log_event(f"🕐 {len(signals_4h)} adet 4H sinyal bulundu (YARIN İÇİN)")
+            send_4h_signals(signals_4h, max_signals=5)
+        else:
+            send_message(f"""🕐 <b>2. 4 SAATLİK TARAMA (YARIN İÇİN)</b>
+━━━━━━━━━━━━━━━━━━━━━━━
+⚠️ Güçlü 4H sinyal bulunamadı
+<i>Yarın sabah tekrar bakılacak</i>""")
+    except Exception as e:
+        log_event(f"❌ 4H akşam hata: {e}")
+        send_message(f"❌ <b>4H Akşam Tarama Hatası</b>\n<code>{str(e)[:200]}</code>")
+
+
 # ════════════════════════════════════════════════════════════
 # BIST 100 - FİBONACCİ DESTEK/DİRENÇ
 # ════════════════════════════════════════════════════════════
 
 def calculate_fibonacci_levels(df, lookback=90):
-    """Son N gün Fibonacci geri çekilme seviyeleri"""
     if len(df) < lookback:
         lookback = len(df)
     
@@ -198,7 +266,6 @@ def calculate_fibonacci_levels(df, lookback=90):
 
 
 def analyze_bist100():
-    """BIST 100 (XU100) endeks analizi - Fibonacci destek/direnç"""
     try:
         import yfinance as yf
         from services.analyzer import analyze_stock
@@ -330,7 +397,6 @@ def analyze_bist100():
 
 
 def format_bist100_analysis(bist):
-    """BIST 100 analiz - Fibonacci destek/direnç ile"""
     if not bist:
         return "📊 <b>BIST 100 ANALİZİ</b>\n⚠️ Veri alınamadı\n\n"
     
@@ -394,13 +460,7 @@ def format_bist100_analysis(bist):
     
     if bist['yarin_beklenti']:
         msg += "━━━━━━━━━━━━━━━━━━━━━━━\n🔮 <b>YARIN İÇİN BEKLENTİ</b>\n━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        for beklenti in bist['yarin_beklenti']:
-            msg += f"{beklenti}\n"
-        msg += "\n"
-    
-    msg += "📊📊📊━━━━━━━━━━━━━━━━━📊📊📊\n\n"
-    return msg
-    # ════════════════════════════════════════════════════════════
+        for beklenti in bist['yarin_bek# ════════════════════════════════════════════════════════════
 # PERFORMANS RAPORU
 # ════════════════════════════════════════════════════════════
 
@@ -837,13 +897,227 @@ def job_weekly_report():
         log_event("✅ Haftalık rapor gönderildi")
     except Exception as e:
         log_event(f"❌ Haftalık rapor hatası: {e}")
-        send_message(f"❌ <b>Haftalık rapor hatası</b>\n<code>{str(e)[:200]}</code>")
-        # ════════════════════════════════════════════════════════════
-# GÜN SONU RAPORU (20/50 KESİŞİM MESAJI KALDIRILDI)
+        send_message(f"❌ <b>Haftalık rapor hatası</b>\n<code>{str(e)[:200]}</code>")lenti']:
+            msg += f"{beklenti}\n"
+        msg += "\n"
+    
+    msg += "📊📊📊━━━━━━━━━━━━━━━━━📊📊📊\n\n"
+    return msg
+    # ════════════════════════════════════════════════════════════
+# 🆕 4H MUM ADAY TESPİTİ (Gün sonu raporu için)
+# ════════════════════════════════════════════════════════════
+
+def get_4h_candidates_for_tomorrow():
+    """
+    Kapanış 4H mumuna göre yarın için 4H aday hisseleri bul
+    """
+    try:
+        from services.tradingview_fetcher import fetch_stock_tv, TV_AVAILABLE
+        from services.analyzer import analyze_stock
+        from services.signal_engine import generate_signal
+        import pandas as pd
+        
+        if not TV_AVAILABLE:
+            log_event("⚠️ TV yok, 4H adayları alınamıyor")
+            return []
+        
+        log_event("🕐 4H mum adayları aranıyor...")
+        candidates = []
+        
+        for symbol in BIST_SYMBOLS:
+            try:
+                data = fetch_stock_tv(symbol, n_bars=100, interval='4h')
+                if not data or len(data) < 20:
+                    continue
+                
+                df = pd.DataFrame(data)
+                analysis = analyze_stock(df, timeframe='4h')
+                if not analysis:
+                    continue
+                
+                # 4H filtreleri
+                cp = analysis.get('current_price')
+                if not cp or cp < 2:
+                    continue
+                
+                rvol = analysis.get('rvol', 0)
+                if rvol < 1.2:  # Düşük hacimliler ele
+                    continue
+                
+                # Sinyal üret
+                signal = generate_signal(symbol, analysis, df)
+                if not signal or signal['score'] < 65:
+                    continue
+                
+                candidates.append({
+                    'symbol': symbol.replace('.IS', ''),
+                    'price': cp,
+                    'score': signal['score'],
+                    'rvol': rvol,
+                    'rsi': analysis.get('rsi', 0),
+                    'targets': signal.get('targets', {}),
+                    'reasons': signal.get('reasons', [])[:3],
+                    'is_dual_signal': signal.get('is_dual_signal', False),
+                    'is_dual_dip': signal.get('is_dual_dip', False)
+                })
+            except:
+                continue
+        
+        # Skora göre sırala
+        candidates.sort(key=lambda x: x['score'], reverse=True)
+        log_event(f"🕐 {len(candidates)} adet 4H aday bulundu")
+        return candidates[:10]
+    except Exception as e:
+        log_event(f"❌ 4H aday hatası: {e}")
+        return []
+
+
+# ════════════════════════════════════════════════════════════
+# 🆕 AKTİF TAKİPTEKİ HİSSELER İÇİN YORUM
+# ════════════════════════════════════════════════════════════
+
+def format_active_positions_review():
+    """
+    Aktif takipteki hisselerin durumunu değerlendir ve yorum ver
+    Gün sonu raporu için
+    """
+    try:
+        from database import get_active_signals
+        from services.analyzer import analyze_stock
+        import yfinance as yf
+        import pandas as pd
+        
+        active = get_active_signals()
+        if not active:
+            return ""
+        
+        msg = "💼💼💼━━━━━━━━━━━━━━━━━💼💼💼\n"
+        msg += f"   <b>AKTİF POZİSYONLAR ({len(active)}) - YORUM</b>\n"
+        msg += "💼💼💼━━━━━━━━━━━━━━━━━💼💼💼\n\n"
+        
+        for s in active[:10]:
+            symbol = s['symbol']
+            entry = s['entry_price']
+            t1 = s['target_1']
+            t2 = s['target_2']
+            stop = s['stop_loss']
+            
+            current_price = None
+            analysis = None
+            
+            try:
+                ticker = yf.Ticker(f"{symbol}.IS")
+                hist = ticker.history(period="3mo")
+                if len(hist) >= 30:
+                    current_price = float(hist['Close'].iloc[-1])
+                    
+                    # Kısa analiz
+                    df = pd.DataFrame({
+                        'date': [d.strftime('%Y-%m-%d') for d in hist.index],
+                        'open': hist['Open'].values, 'high': hist['High'].values,
+                        'low': hist['Low'].values, 'close': hist['Close'].values,
+                        'volume': hist['Volume'].values
+                    })
+                    analysis = analyze_stock(df, timeframe='daily')
+            except:
+                pass
+            
+            if not current_price:
+                msg += f"⚪ <b>{symbol}</b> - fiyat alınamadı\n\n"
+                continue
+            
+            pnl = ((current_price - entry) / entry) * 100
+            
+            # Emoji + durum
+            if s.get('target_2_hit'):
+                emoji = "🎯🎯"
+                status = "H2 vuruldu!"
+            elif s.get('target_1_hit'):
+                emoji = "🎯"
+                status = "H1 vuruldu"
+            elif pnl >= 3:
+                emoji = "🟢"
+                status = "Kârda, gidiyor"
+            elif pnl >= 0:
+                emoji = "🟡"
+                status = "Nötr bölge"
+            elif pnl >= -2:
+                emoji = "🟠"
+                status = "Hafif zararda"
+            else:
+                emoji = "🔴"
+                status = "Zararda - dikkat"
+            
+            msg += f"{emoji} <b>{symbol}</b> - {status}\n"
+            msg += f"   📥 {entry:.2f} → 💰 {current_price:.2f} (<b>{pnl:+.2f}%</b>)\n"
+            msg += f"   🎯 H1: {t1:.2f} | H2: {t2:.2f} | 🛑 {stop:.2f}\n"
+            
+            # 🆕 Teknik yorum
+            if analysis:
+                rsi = analysis.get('rsi', 50)
+                ema22 = analysis.get('ema_22')
+                ema50 = analysis.get('ema_50')
+                macd = analysis.get('macd')
+                ms = analysis.get('macd_signal')
+                
+                comments = []
+                
+                # Trend değerlendirme
+                if ema22 and ema50 and current_price:
+                    if current_price > ema22 > ema50:
+                        comments.append("✅ Trend güçlü, tutmaya devam")
+                    elif current_price > ema22:
+                        comments.append("📈 EMA22 üstünde, sağlıklı")
+                    elif current_price < ema22 and current_price > ema50:
+                        comments.append("⚠️ EMA22 kırıldı, dikkatli izle")
+                    elif current_price < ema50:
+                        comments.append("🔴 EMA50 altında, stop yakın olabilir")
+                
+                # RSI değerlendirme
+                if rsi >= 75:
+                    comments.append("⚠️ RSI aşırı yüksek - kar al düşün")
+                elif rsi >= 65:
+                    comments.append("💪 Momentum güçlü")
+                elif rsi < 35:
+                    comments.append("🎯 RSI düşük - dip toparlanma olabilir")
+                
+                # MACD değerlendirme
+                if macd is not None and ms is not None:
+                    if macd < ms and pnl > 0:
+                        comments.append("⚠️ MACD zayıflıyor - kar kilitle")
+                    elif macd > ms:
+                        comments.append("🚀 MACD pozitif")
+                
+                # Öneri
+                if s.get('target_1_hit') and not s.get('target_2_hit'):
+                    if pnl > 5:
+                        comments.append("💡 ÖNERİ: %33 daha sat, H2'yi bekle")
+                elif pnl >= 8:
+                    comments.append("💡 ÖNERİ: Kısmi kar al!")
+                elif pnl <= -3:
+                    comments.append("💡 ÖNERİ: Stop yaklaştı, hazır ol")
+                
+                if comments:
+                    for c in comments[:3]:
+                        msg += f"   {c}\n"
+            
+            msg += "\n"
+        
+        if len(active) > 10:
+            msg += f"<i>+{len(active)-10} sinyal daha aktif takipte</i>\n\n"
+        
+        return msg
+    except Exception as e:
+        log_event(f"❌ Aktif pozisyon yorumu hatası: {e}")
+        return ""
+
+
+# ════════════════════════════════════════════════════════════
+# 🆕 GÜN SONU RAPORU (Günlük + 4H önerileri + Aktif yorum)
 # ════════════════════════════════════════════════════════════
 
 def job_end_of_day_report():
-    log_event("🌆 GÜN SONU RAPORU")
+    log_event("🌆 GÜN SONU RAPORU (v2 - 4H önerileri dahil)")
     
     try:
         import yfinance as yf
@@ -853,19 +1127,33 @@ def job_end_of_day_report():
         
         send_message(f"""🌆 <b>GÜN SONU RAPORU HAZIRLANIYOR</b>
 ⏰ {tr_now().strftime('%H:%M - %d.%m.%Y')}
-📊 Analiz ediliyor...""")
+📊 Günlük + 4H analizler yapılıyor...
+<i>2-3 dakika sürebilir</i>""")
         
+        # ═══════════════════════════════════════
         # MESAJ 1: BIST 100 (FİBONACCİ)
+        # ═══════════════════════════════════════
         bist100 = analyze_bist100()
         msg1 = f"🌆 <b>GÜN SONU RAPORU</b>\n━━━━━━━━━━━━━━━━━━━━━━━\n📅 {tr_now().strftime('%d.%m.%Y - %A')}\n\n"
         msg1 += format_bist100_analysis(bist100)
         send_message(msg1)
         
+        # ═══════════════════════════════════════
         # MESAJ 2: PERFORMANS
+        # ═══════════════════════════════════════
         perf_msg = format_performance_report()
         send_message(perf_msg)
         
-        # MESAJ 3: PİYASA + YARIN HİSSELER (20/50 KESİŞİM MESAJI KALDIRILDI)
+        # ═══════════════════════════════════════
+        # 🆕 MESAJ 3: AKTİF POZİSYON YORUMLARI
+        # ═══════════════════════════════════════
+        active_msg = format_active_positions_review()
+        if active_msg:
+            send_message(active_msg)
+        
+        # ═══════════════════════════════════════
+        # MESAJ 4: PİYASA + GÜNLÜK MUM ADAYLARI
+        # ═══════════════════════════════════════
         movers_data = []
         tomorrow_candidates = []
         
@@ -961,7 +1249,7 @@ def job_end_of_day_report():
             except: continue
         
         tomorrow_signals.sort(key=lambda x: x['tomorrow_score'], reverse=True)
-        top_5 = tomorrow_signals[:5]
+        top_5_daily = tomorrow_signals[:5]
         
         liquid = [m for m in movers_data if m['volume_tl'] > 1_000_000]
         gainers = sorted([m for m in liquid if m['daily_change'] > 0], key=lambda x: x['daily_change'], reverse=True)[:5]
@@ -969,82 +1257,151 @@ def job_end_of_day_report():
         total_up = len([m for m in movers_data if m['daily_change'] > 0])
         total_down = len([m for m in movers_data if m['daily_change'] < 0])
         
-        msg3 = "📊 <b>PİYASA DURUMU</b>\n━━━━━━━━━━━━━━━━━━━━━━━\n"
-        msg3 += f"📈 Yükselen: <b>{total_up}</b>\n📉 Düşen: <b>{total_down}</b>\n"
+        msg4 = "📊 <b>PİYASA DURUMU</b>\n━━━━━━━━━━━━━━━━━━━━━━━\n"
+        msg4 += f"📈 Yükselen: <b>{total_up}</b>\n📉 Düşen: <b>{total_down}</b>\n"
         
-        if total_up > total_down * 1.5: msg3 += "💪 <b>Trend: GÜÇLÜ YUKARI</b> 🚀\n\n"
-        elif total_up > total_down: msg3 += "✅ <b>Trend: POZİTİF</b> 📈\n\n"
-        elif total_down > total_up * 1.5: msg3 += "⚠️ <b>Trend: GÜÇLÜ AŞAĞI</b> 📉\n\n"
-        else: msg3 += "➡️ <b>Trend: YATAY</b>\n\n"
+        if total_up > total_down * 1.5: msg4 += "💪 <b>Trend: GÜÇLÜ YUKARI</b> 🚀\n\n"
+        elif total_up > total_down: msg4 += "✅ <b>Trend: POZİTİF</b> 📈\n\n"
+        elif total_down > total_up * 1.5: msg4 += "⚠️ <b>Trend: GÜÇLÜ AŞAĞI</b> 📉\n\n"
+        else: msg4 += "➡️ <b>Trend: YATAY</b>\n\n"
         
         if gainers:
-            msg3 += "🏆 <b>EN ÇOK YÜKSELENLER</b>\n━━━━━━━━━━━━━━━━━━━━━━━\n"
+            msg4 += "🏆 <b>EN ÇOK YÜKSELENLER</b>\n━━━━━━━━━━━━━━━━━━━━━━━\n"
             for i, g in enumerate(gainers, 1):
                 rv = "🔥" if g['rvol'] > 3 else "💪" if g['rvol'] > 1.5 else ""
-                msg3 += f"{i}. <b>{g['symbol']}</b> <b>+%{g['daily_change']:.2f}</b> ({g['price']:.2f} TL) {rv}\n"
-            msg3 += "\n"
+                msg4 += f"{i}. <b>{g['symbol']}</b> <b>+%{g['daily_change']:.2f}</b> ({g['price']:.2f} TL) {rv}\n"
+            msg4 += "\n"
         
         if losers:
-            msg3 += "📉 <b>EN ÇOK DÜŞENLER</b>\n━━━━━━━━━━━━━━━━━━━━━━━\n"
+            msg4 += "📉 <b>EN ÇOK DÜŞENLER</b>\n━━━━━━━━━━━━━━━━━━━━━━━\n"
             for i, l in enumerate(losers, 1):
-                msg3 += f"{i}. <b>{l['symbol']}</b> <b>%{l['daily_change']:.2f}</b> ({l['price']:.2f} TL)\n"
-            msg3 += "\n"
+                msg4 += f"{i}. <b>{l['symbol']}</b> <b>%{l['daily_change']:.2f}</b> ({l['price']:.2f} TL)\n"
+            msg4 += "\n"
         
-        if top_5:
-            msg3 += "⭐⭐⭐━━━━━━━━━━━━━━━━━⭐⭐⭐\n   <b>YARIN İÇİN EN İYİ 5 HİSSE</b>\n⭐⭐⭐━━━━━━━━━━━━━━━━━⭐⭐⭐\n\n"
-            msg3 += "🎯 <i>Son kapanış verilerine göre</i>\n\n"
-            for i, t in enumerate(top_5, 1):
+        # GÜNLÜK MUM ADAYLARI
+        if top_5_daily:
+            msg4 += "⭐⭐⭐━━━━━━━━━━━━━━━━━⭐⭐⭐\n   <b>YARIN İÇİN GÜNLÜK MUM ADAYLARI</b>\n⭐⭐⭐━━━━━━━━━━━━━━━━━⭐⭐⭐\n\n"
+            msg4 += "🎯 <i>Günlük mum analizine göre TOP 5</i>\n\n"
+            for i, t in enumerate(top_5_daily, 1):
                 medal = {1:'🥇',2:'🥈',3:'🥉',4:'🏅',5:'🎖️'}.get(i, f"{i}.")
-                msg3 += f"{medal} <b>{t['symbol']}</b>\n"
-                msg3 += f"   💰 Kapanış: <b>{t['price']:.2f} TL</b>\n"
-                msg3 += f"   📊 Bugün: <b>+%{t['daily_change']:.2f}</b> | Hacim: {t['rvol']:.1f}x\n"
-                msg3 += f"   💪 Mum gücü: %{t['candle_strength']:.0f}\n"
+                msg4 += f"{medal} <b>{t['symbol']}</b>\n"
+                msg4 += f"   💰 Kapanış: <b>{t['price']:.2f} TL</b>\n"
+                msg4 += f"   📊 Bugün: <b>+%{t['daily_change']:.2f}</b> | Hacim: {t['rvol']:.1f}x\n"
+                msg4 += f"   💪 Mum gücü: %{t['candle_strength']:.0f}\n"
                 targets = t.get('targets', {})
                 if targets.get('target_1'):
-                    msg3 += f"   🎯 Hedef: <b>{targets['target_1']:.2f} TL</b> (+{targets.get('target_1_pct',0)}%)\n"
+                    msg4 += f"   🎯 Hedef: <b>{targets['target_1']:.2f} TL</b> (+{targets.get('target_1_pct',0)}%)\n"
                 if t['reasons']:
-                    msg3 += f"   ✅ {' | '.join(t['reasons'][:3])}\n"
-                msg3 += "\n"
-            msg3 += "━━━━━━━━━━━━━━━━━━━━━━━\n⚠️ <i>Yarın açılışta fiyat kontrol edin!</i>\n⚠️ <i>Gap up varsa dikkatli giriş!</i>\n\n"
-        else:
-            msg3 += "⭐ <b>YARIN İÇİN ADAY</b>\n━━━━━━━━━━━━━━━━━━━━━━━\n⚠️ <i>Güçlü aday bulunamadı</i>\n\n"
+                    msg4 += f"   ✅ {' | '.join(t['reasons'][:3])}\n"
+                msg4 += "\n"
         
-        msg3 += "🎯 <b>YARIN STRATEJİ</b>\n━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        send_message(msg4)
+        
+        # ═══════════════════════════════════════
+        # 🆕 MESAJ 5: 4H MUM ADAYLARI + ÇAKIŞMA
+        # ═══════════════════════════════════════
+        candidates_4h = get_4h_candidates_for_tomorrow()
+        
+        msg5 = "🕐🕐🕐━━━━━━━━━━━━━━━━━🕐🕐🕐\n"
+        msg5 += "     <b>4H MUM ÖNERİLERİ</b>\n"
+        msg5 += "     <i>Kapanış 4H mumu analizi</i>\n"
+        msg5 += "🕐🕐🕐━━━━━━━━━━━━━━━━━🕐🕐🕐\n\n"
+        
+        if candidates_4h:
+            top_5_4h = candidates_4h[:5]
+            msg5 += "🎯 <i>4H mum analizine göre TOP 5</i>\n\n"
+            
+            for i, c in enumerate(top_5_4h, 1):
+                medal = {1:'🥇',2:'🥈',3:'🥉',4:'🏅',5:'🎖️'}.get(i, f"{i}.")
+                
+                # Dual signal etiketi
+                dual_tag = ""
+                if c.get('is_dual_dip'):
+                    dual_tag = " 💎 GÜÇLÜ DİP DÖNÜŞÜ!"
+                elif c.get('is_dual_signal'):
+                    dual_tag = " ⭐ ÇİFTLİ DÖNÜŞ"
+                
+                msg5 += f"{medal} <b>{c['symbol']}</b> (Skor: {c['score']}){dual_tag}\n"
+                msg5 += f"   💰 4H Kapanış: <b>{c['price']:.2f} TL</b>\n"
+                msg5 += f"   💥 4H RVOL: {c['rvol']:.1f}x | ⚡ RSI: {c['rsi']:.0f}\n"
+                
+                targets = c.get('targets', {})
+                if targets.get('target_1'):
+                    msg5 += f"   🎯 Hedef: <b>{targets['target_1']:.2f} TL</b> (+{targets.get('target_1_pct',0)}%)\n"
+                if targets.get('stop_loss'):
+                    msg5 += f"   🛑 Stop: {targets['stop_loss']:.2f} TL\n"
+                
+                if c['reasons']:
+                    for r in c['reasons'][:2]:
+                        msg5 += f"   {r.get('icon','✅')} {r.get('title','')}\n"
+                msg5 += "\n"
+            
+            # 🆕 ÇAKIŞAN HİSSELER TESPİTİ
+            daily_symbols = set(t['symbol'] for t in top_5_daily)
+            fourh_symbols = set(c['symbol'] for c in top_5_4h)
+            overlapping = daily_symbols & fourh_symbols
+            
+            if overlapping:
+                msg5 += "⭐⭐⭐━━━━━━━━━━━━━━━━━⭐⭐⭐\n"
+                msg5 += "   <b>🎯 ÇAKIŞAN HİSSELER (EN GÜÇLÜ)</b>\n"
+                msg5 += "⭐⭐⭐━━━━━━━━━━━━━━━━━⭐⭐⭐\n\n"
+                msg5 += "💎 <i>Hem günlük hem 4H onaylı - EN İYİ FIRSAT!</i>\n\n"
+                for sym in overlapping:
+                    msg5 += f"⭐ <b>{sym}</b> - Çift zaman dilimi onayı!\n"
+                msg5 += "\n"
+        else:
+            msg5 += "⚠️ <i>Güçlü 4H aday bulunamadı</i>\n\n"
+        
+        # ═══════════════════════════════════════
+        # YARIN STRATEJİ
+        # ═══════════════════════════════════════
+        msg5 += "🎯 <b>YARIN STRATEJİ</b>\n━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         if bist100:
             trend = bist100.get('trend_status', '')
             if trend in ["GÜÇLÜ BOĞA", "BOĞA"]:
-                msg3 += "✅ BIST 100 güçlü, AL fırsatlarına odaklan\n✅ Yukarıdaki 5 hisseyi izle\n\n"
+                msg5 += "✅ BIST 100 güçlü, AL fırsatlarına odaklan\n"
+                msg5 += "✅ Günlük + 4H çakışan hisseler önceliğin olsun\n\n"
             elif trend in ["AYI", "GÜÇLÜ AYI"]:
-                msg3 += "⚠️ BIST 100 zayıf, DİKKATLİ ol\n⚠️ Sadece çok güçlü sinyallere gir\n⚠️ Küçük pozisyon aç\n\n"
+                msg5 += "⚠️ BIST 100 zayıf, DİKKATLİ ol\n"
+                msg5 += "⚠️ Sadece çok güçlü sinyallere gir (dual onaylı)\n"
+                msg5 += "⚠️ Küçük pozisyon aç\n\n"
             else:
-                msg3 += "📊 BIST 100 kararsız, seçici ol\n📊 Top 2-3 hisseyi izle\n\n"
-        else:
-            if total_up > total_down * 1.5: msg3 += "✅ Piyasa güçlü, AL fırsatlarına odaklan\n\n"
-            elif total_down > total_up * 1.5: msg3 += "⚠️ Piyasa zayıf, DİKKATLİ ol\n\n"
-            else: msg3 += "📊 Karışık piyasa, seçici ol\n\n"
+                msg5 += "📊 BIST 100 kararsız, seçici ol\n"
+                msg5 += "📊 Dual signal olanları öncelikle\n\n"
         
-        if top_5:
-            msg3 += "👀 <b>YARIN İZLE:</b> " + ", ".join([t['symbol'] for t in top_5]) + "\n\n"
+        # İzlenecek liste
+        watchlist = []
+        if top_5_daily:
+            watchlist.extend([t['symbol'] for t in top_5_daily])
+        if candidates_4h:
+            for c in candidates_4h[:5]:
+                if c['symbol'] not in watchlist:
+                    watchlist.append(c['symbol'])
         
-        msg3 += "━━━━━━━━━━━━━━━━━━━━━━━\n💤 <i>Bot dinlenmeye geçiyor</i>\n🌅 <i>Yarın 09:45'te tekrar!</i>\n💰 <i>İyi kazançlar!</i>"
+        if watchlist:
+            msg5 += "👀 <b>YARIN İZLE:</b> " + ", ".join(watchlist[:8]) + "\n\n"
         
-        send_message(msg3)
-        log_event("✅ Gün sonu raporu gönderildi")
+        msg5 += "━━━━━━━━━━━━━━━━━━━━━━━\n"
+        msg5 += "💤 <i>Bot dinlenmeye geçiyor</i>\n"
+        msg5 += "🌅 <i>Yarın 09:45'te tekrar!</i>\n"
+        msg5 += "💰 <i>İyi kazançlar!</i>"
+        
+        send_message(msg5)
+        
+        log_event("✅ Gün sonu raporu gönderildi (5 mesaj)")
     except Exception as e:
         log_event(f"❌ Gün sonu hatası: {e}")
         send_message(f"❌ <b>Gün sonu hatası</b>\n<code>{str(e)[:200]}</code>")
 
 
 # ════════════════════════════════════════════════════════════
-# TAM TARAMA + SAATLİK + TAKİP (BİRLEŞİK)
+# BİRLEŞİK TARAMA + TAKİP (workflow için)
 # ════════════════════════════════════════════════════════════
 
 def job_full_scan_with_tracking():
-    log_event("🔍 TAM + SAATLİK + TAKİP")
+    """Manuel/workflow için birleşik tarama + takip"""
+    log_event("🔍 TAM TARAMA + TAKİP")
     job_full_scan()
-    log_event("⚡ SAATLİK BAŞLATILIYOR...")
-    try: job_hourly_scan()
-    except Exception as e: log_event(f"⚠️ Saatlik hata: {e}")
     log_event("🎯 TAKİP BAŞLATILIYOR...")
     try:
         from services.signal_tracker import track_signals_job
@@ -1054,43 +1411,78 @@ def job_full_scan_with_tracking():
 
 
 # ════════════════════════════════════════════════════════════
-# ZAMANLAYICI
+# 🆕 YENİ ZAMANLAYICI (Yeni saatler)
 # ════════════════════════════════════════════════════════════
 
 def setup_scheduler():
+    """
+    YENİ TARAMA PROGRAMI:
+    09:45 → Sabah hazırlık
+    09:55 → Pre-market rapor
+    10:30 → Açılış taraması (günlük)
+    12:00 → 2. günlük tarama (2 saatlik)
+    14:00 → 1. 4H tarama
+    16:00 → 3. günlük tarama (2 saatlik)
+    18:15 → 2. 4H tarama (yarın için)
+    19:00 → Gün sonu raporu
+    
+    Cumartesi 10:00 → Haftalık rapor
+    
+    KALDIRILDI (manuel için fonksiyonlar duruyor):
+    - Saatlik tarama (job_hourly_scan)
+    - Quick scan (job_quick_scan)
+    - Her saat full scan
+    """
     scheduler = BlockingScheduler(timezone='Europe/Istanbul')
+    
     scheduler.add_job(job_morning_preparation, CronTrigger(hour=9, minute=45, day_of_week='mon-fri'), id='morning')
     scheduler.add_job(job_premarket_report, CronTrigger(hour=9, minute=55, day_of_week='mon-fri'), id='premarket')
-    scheduler.add_job(job_market_open_scan, CronTrigger(hour=10, minute=15, day_of_week='mon-fri'), id='open')
-    scheduler.add_job(job_quick_scan, CronTrigger(minute='30,45', hour='10-17', day_of_week='mon-fri'), id='quick')
-    scheduler.add_job(job_full_scan, CronTrigger(minute=0, hour='11-17', day_of_week='mon-fri'), id='full')
-    scheduler.add_job(job_4h_scan, CronTrigger(hour=14, minute=15, day_of_week='mon-fri'), id='4h_scan')
-    scheduler.add_job(job_end_of_day_report, CronTrigger(hour=18, minute=30, day_of_week='mon-fri'), id='eod')
+    scheduler.add_job(job_market_open_scan, CronTrigger(hour=10, minute=30, day_of_week='mon-fri'), id='open')
+    scheduler.add_job(job_full_scan_2h, CronTrigger(hour=12, minute=0, day_of_week='mon-fri'), id='scan_12')
+    scheduler.add_job(job_4h_scan, CronTrigger(hour=14, minute=0, day_of_week='mon-fri'), id='4h_1')
+    scheduler.add_job(job_full_scan_2h, CronTrigger(hour=16, minute=0, day_of_week='mon-fri'), id='scan_16')
+    scheduler.add_job(job_4h_scan_evening, CronTrigger(hour=18, minute=15, day_of_week='mon-fri'), id='4h_2')
+    scheduler.add_job(job_end_of_day_report, CronTrigger(hour=19, minute=0, day_of_week='mon-fri'), id='eod')
     scheduler.add_job(job_weekly_report, CronTrigger(hour=10, minute=0, day_of_week='sat'), id='weekly')
+    
     return scheduler
 
 def start_scheduler():
     scheduler = setup_scheduler()
-    try: send_message(f"🤖 <b>BOT AKTİF</b>\n⏰ {tr_now().strftime('%H:%M - %d.%m.%Y')}")
+    try: send_message(f"🤖 <b>BOT AKTİF v2</b>\n⏰ {tr_now().strftime('%H:%M - %d.%m.%Y')}\n\n📊 Yeni saatler:\n10:30, 12:00, 14:00, 16:00, 18:15, 19:00")
     except: pass
     try: scheduler.start()
     except (KeyboardInterrupt, SystemExit): print("⏹️ Durduruldu")
 
 
 if __name__ == "__main__":
-    print(f"\n⏰ ZAMANLAYICI - {tr_now().strftime('%H:%M')}")
-    print("1→Başlat 2→Sabah 3→PreMarket 4→Açılış 5→Hızlı")
-    print("6→Tam 7→4H Tarama 8→GünSonu 9→Tam+Saatlik+Takip 10→Saatlik 11→HaftalıkRapor")
+    print(f"\n⏰ ZAMANLAYICI v2 - {tr_now().strftime('%H:%M')}")
+    print("\n📊 YENİ PROGRAM:")
+    print("   09:45 → Sabah hazırlık")
+    print("   09:55 → Pre-market rapor")
+    print("   10:30 → Açılış taraması")
+    print("   12:00 → 2. günlük tarama")
+    print("   14:00 → 1. 4H tarama")
+    print("   16:00 → 3. günlük tarama")
+    print("   18:15 → 2. 4H tarama (yarın için)")
+    print("   19:00 → Gün sonu raporu")
+    print("   Cumartesi 10:00 → Haftalık rapor")
+    print("\n🎯 MANUEL SEÇENEKLER:")
+    print("1→Başlat  2→Sabah  3→PreMarket  4→Açılış  5→2 Saatlik")
+    print("6→1. 4H  7→2. 4H Akşam  8→Gün Sonu  9→Haftalık")
+    print("10→Saatlik(manuel)  11→Full Scan (manuel)  12→Full+Takip")
     
     c = input("\nSeçim: ").strip()
     if c=="1": start_scheduler()
     elif c=="2": job_morning_preparation()
     elif c=="3": job_premarket_report()
     elif c=="4": job_market_open_scan()
-    elif c=="5": job_quick_scan()
-    elif c=="6": job_full_scan()
-    elif c=="7": job_4h_scan()
+    elif c=="5": job_full_scan_2h()
+    elif c=="6": job_4h_scan()
+    elif c=="7": job_4h_scan_evening()
     elif c=="8": job_end_of_day_report()
-    elif c=="9": job_full_scan_with_tracking()
+    elif c=="9": job_weekly_report()
     elif c=="10": job_hourly_scan()
-    elif c=="11": job_weekly_report()
+    elif c=="11": job_full_scan()
+    elif c=="12": job_full_scan_with_tracking()
+    
