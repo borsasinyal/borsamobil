@@ -1,7 +1,7 @@
 """
 Profesyonel Teknik Analiz Motoru
 EMA 5/22/50/200 (Günlük) + EMA 5/22 (Saatlik) + EMA 5/22/50 (4H)
-+ EMA 20 (Sadece 20/50 kesişim tespiti için)
++ FIBONACCI (Normal + Extended) - Tüm timeframe'lerde 90 mum
 """
 
 import pandas as pd
@@ -134,6 +134,244 @@ def calculate_obv(data):
     return obv
 
 
+# ════════════════════════════════════════════════════════════
+# 🆕 FIBONACCI SİSTEMİ - Tüm timeframe'ler için
+# ════════════════════════════════════════════════════════════
+
+def calculate_fibonacci_analysis(df, current_price, lookback=90):
+    """
+    Fibonacci analizi yap - hem seviyeleri hem hedef/stop hesapla
+    
+    Args:
+        df: DataFrame (high, low, close sütunları olmalı)
+        current_price: Şu anki fiyat
+        lookback: Kaç mum geriye bakılacak (varsayılan 90)
+    
+    Returns:
+        dict: Fibonacci seviyeleri + hedef/stop
+    """
+    if df is None or len(df) < 20:
+        return None
+    
+    # Lookback ayarla (veri az ise mevcut kadar)
+    actual_lookback = min(lookback, len(df))
+    recent = df.tail(actual_lookback)
+    
+    dip = float(recent['low'].min())
+    zirve = float(recent['high'].max())
+    
+    if dip >= zirve or dip <= 0:
+        return None
+    
+    diff = zirve - dip
+    
+    # ═══════════════════════════════════════
+    # NORMAL FİBONACCİ SEVİYELERİ (dip'ten zirve'ye)
+    # ═══════════════════════════════════════
+    normal_levels = {
+        'dip': dip,
+        'fib_236': dip + (diff * 0.236),
+        'fib_382': dip + (diff * 0.382),
+        'fib_500': dip + (diff * 0.500),
+        'fib_618': dip + (diff * 0.618),
+        'fib_786': dip + (diff * 0.786),
+        'zirve': zirve
+    }
+    
+    # ═══════════════════════════════════════
+    # EXTENDED FİBONACCİ (zirve üstü - genişleme)
+    # ═══════════════════════════════════════
+    extended_levels = {
+        'ext_1272': zirve + (diff * 0.272),   # 1.272 seviyesi
+        'ext_1414': zirve + (diff * 0.414),   # 1.414 seviyesi
+        'ext_1618': zirve + (diff * 0.618),   # 1.618 Altın Genişleme
+        'ext_2000': zirve + (diff * 1.000),   # 2.000
+        'ext_2618': zirve + (diff * 1.618),   # 2.618 (uzak)
+    }
+    
+    # ═══════════════════════════════════════
+    # DURUM TESPİTİ
+    # ═══════════════════════════════════════
+    is_above_zirve = current_price > zirve
+    is_below_dip = current_price < dip
+    
+    # Fiyat hangi seviyede?
+    current_position = "normal"
+    current_zone = ""
+    
+    if is_above_zirve:
+        current_position = "extended"
+        current_zone = "ZIRVE USTU - Extended bolge"
+    elif is_below_dip:
+        current_position = "below_dip"
+        current_zone = "DIP ALTI - Riskli"
+    else:
+        # Hangi Fibonacci bölgesinde?
+        if current_price >= normal_levels['fib_786']:
+            current_zone = "0.786 - 1.0 arasi (guclu)"
+        elif current_price >= normal_levels['fib_618']:
+            current_zone = "0.618 - 0.786 arasi (Altin Oran ustu)"
+        elif current_price >= normal_levels['fib_500']:
+            current_zone = "0.5 - 0.618 arasi (orta-guclu)"
+        elif current_price >= normal_levels['fib_382']:
+            current_zone = "0.382 - 0.5 arasi (orta)"
+        elif current_price >= normal_levels['fib_236']:
+            current_zone = "0.236 - 0.382 arasi (zayif)"
+        else:
+            current_zone = "0.0 - 0.236 arasi (dip bolge)"
+    
+    # ═══════════════════════════════════════
+    # HEDEF VE STOP HESABI
+    # ═══════════════════════════════════════
+    targets = calculate_fibonacci_targets(
+        current_price, 
+        normal_levels, 
+        extended_levels, 
+        is_above_zirve
+    )
+    
+    return {
+        'lookback': actual_lookback,
+        'dip': dip,
+        'zirve': zirve,
+        'range': diff,
+        'current_price': current_price,
+        'current_position': current_position,
+        'current_zone': current_zone,
+        'is_above_zirve': is_above_zirve,
+        'is_below_dip': is_below_dip,
+        'normal_levels': normal_levels,
+        'extended_levels': extended_levels,
+        'targets': targets
+    }
+
+
+def calculate_fibonacci_targets(current_price, normal_levels, extended_levels, is_above_zirve):
+    """
+    Fibonacci bazlı hedef ve stop hesabı
+    
+    Kural:
+    - Fiyat zirve altındaysa → Normal Fibonacci
+    - Fiyat zirveyi kırdıysa → Extended Fibonacci
+    """
+    
+    # Tüm seviyeleri sıralı liste yap
+    all_levels = []
+    
+    for key, price in normal_levels.items():
+        all_levels.append({'name': key, 'price': price, 'type': 'normal'})
+    for key, price in extended_levels.items():
+        all_levels.append({'name': key, 'price': price, 'type': 'extended'})
+    
+    # Fiyata göre sırala
+    all_levels.sort(key=lambda x: x['price'])
+    
+    # Fiyatın üstündeki seviyeler = hedef adayları
+    above_levels = [l for l in all_levels if l['price'] > current_price]
+    # Fiyatın altındaki seviyeler = stop adayları
+    below_levels = [l for l in all_levels if l['price'] < current_price]
+    
+    # ═══════════════════════════════════════
+    # HEDEF SEÇİMİ (fiyatın üstündeki ilk 3 seviye)
+    # ═══════════════════════════════════════
+    if len(above_levels) >= 3:
+        target_1 = above_levels[0]
+        target_2 = above_levels[1]
+        target_3 = above_levels[2]
+    elif len(above_levels) == 2:
+        target_1 = above_levels[0]
+        target_2 = above_levels[1]
+        # 3. hedef için extended ekle
+        target_3 = {'name': 'ext_1618', 'price': extended_levels['ext_1618'], 'type': 'extended'}
+    elif len(above_levels) == 1:
+        target_1 = above_levels[0]
+        target_2 = {'name': 'ext_1272', 'price': extended_levels['ext_1272'], 'type': 'extended'}
+        target_3 = {'name': 'ext_1618', 'price': extended_levels['ext_1618'], 'type': 'extended'}
+    else:
+        # Fiyat çok yukarda, extended tam liste
+        target_1 = {'name': 'ext_1272', 'price': extended_levels['ext_1272'], 'type': 'extended'}
+        target_2 = {'name': 'ext_1414', 'price': extended_levels['ext_1414'], 'type': 'extended'}
+        target_3 = {'name': 'ext_1618', 'price': extended_levels['ext_1618'], 'type': 'extended'}
+    
+    # ═══════════════════════════════════════
+    # STOP SEÇİMİ (fiyatın altındaki en yakın seviye altı)
+    # ═══════════════════════════════════════
+    if below_levels:
+        # En yakın alttaki seviye
+        stop_level = below_levels[-1]  # En yakın alt seviye
+        stop_price = stop_level['price'] * 0.995  # %0.5 altına
+        stop_source = f"Fib {get_fib_display_name(stop_level['name'])} alti"
+    else:
+        # Alt seviye yok, dip altı stop
+        stop_price = normal_levels['dip'] * 0.98
+        stop_source = "Dip alti (fallback)"
+    
+    # Stop yüzdesi kontrol - min %2.5 max %6
+    stop_pct = ((current_price - stop_price) / current_price) * 100
+    
+    if stop_pct < 2.5:
+        stop_price = current_price * 0.975
+        stop_pct = 2.5
+        stop_source = "Min sinir (%2.5)"
+    elif stop_pct > 6.0:
+        stop_price = current_price * 0.94
+        stop_pct = 6.0
+        stop_source = "Max sinir (%6)"
+    
+    # ═══════════════════════════════════════
+    # HEDEF YÜZDELER
+    # ═══════════════════════════════════════
+    t1_pct = ((target_1['price'] - current_price) / current_price) * 100
+    t2_pct = ((target_2['price'] - current_price) / current_price) * 100
+    t3_pct = ((target_3['price'] - current_price) / current_price) * 100
+    
+    # Risk/Reward (H2 baz alınır)
+    risk = current_price - stop_price
+    reward_h2 = target_2['price'] - current_price
+    rr = round(reward_h2 / risk, 2) if risk > 0 else 0
+    
+    return {
+        'entry': round(current_price, 2),
+        'target_1': round(target_1['price'], 2),
+        'target_1_pct': round(t1_pct, 2),
+        'target_1_source': f"Fib {get_fib_display_name(target_1['name'])}",
+        'target_2': round(target_2['price'], 2),
+        'target_2_pct': round(t2_pct, 2),
+        'target_2_source': f"Fib {get_fib_display_name(target_2['name'])}",
+        'target_3': round(target_3['price'], 2),
+        'target_3_pct': round(t3_pct, 2),
+        'target_3_source': f"Fib {get_fib_display_name(target_3['name'])}",
+        'stop_loss': round(stop_price, 2),
+        'stop_pct': round(stop_pct, 2),
+        'stop_source': stop_source,
+        'risk_reward': rr,
+        'method': 'fibonacci'
+    }
+
+
+def get_fib_display_name(fib_name):
+    """Fibonacci seviye adını okunabilir yap"""
+    display_map = {
+        'dip': '0.0 (Dip)',
+        'fib_236': '0.236',
+        'fib_382': '0.382',
+        'fib_500': '0.5',
+        'fib_618': '0.618 (Altin Oran)',
+        'fib_786': '0.786',
+        'zirve': '1.0 (Zirve)',
+        'ext_1272': '1.272 (Ext)',
+        'ext_1414': '1.414 (Ext)',
+        'ext_1618': '1.618 (Altin Genisleme)',
+        'ext_2000': '2.0 (Ext)',
+        'ext_2618': '2.618 (Ext)'
+    }
+    return display_map.get(fib_name, fib_name)
+
+
+# ════════════════════════════════════════════════════════════
+# MUM FORMASYONLARI
+# ════════════════════════════════════════════════════════════
+
 def detect_candle_patterns(data):
     patterns = {}
     o, h, l, c = data['open'], data['high'], data['low'], data['close']
@@ -253,12 +491,12 @@ def detect_momentum_status(data, analysis):
 
 def analyze_stock(df, timeframe='daily'):
     """
-    Tüm indikatörleri hesapla
+    Tüm indikatörleri hesapla + Fibonacci analizi
     
     timeframe:
-    - 'daily' → EMA 5/22/50/200 (Golden Cross) + EMA 20 (bilgi)
-    - 'hourly' → EMA 5/22
-    - '4h' → EMA 5/22/50
+    - 'daily' → EMA 5/22/50/200 + Fibonacci (90 günlük mum)
+    - 'hourly' → EMA 5/22 + Fibonacci (90 saatlik mum)
+    - '4h' → EMA 5/22/50 + Fibonacci (90 tane 4H mum)
     """
     if len(df) < 20:
         return None
@@ -269,11 +507,10 @@ def analyze_stock(df, timeframe='daily'):
     df['macd'], df['macd_signal'], df['macd_hist'] = calculate_macd(df)
     df['bb_upper'], df['bb_middle'], df['bb_lower'], df['bb_width'] = calculate_bollinger_bands(df)
     
-    # EMA - Zaman dilimine göre değişir
+    # EMA'lar
     df['ema_5'] = calculate_ema(df, 5)
     df['ema_22'] = calculate_ema(df, 22)
     
-    # 🆕 EMA 20 (Sadece günlükte, 20/50 kesişim tespiti için)
     if timeframe == 'daily':
         df['ema_20'] = calculate_ema(df, 20)
     else:
@@ -290,7 +527,6 @@ def analyze_stock(df, timeframe='daily'):
         df['ema_200'] = calculate_ema(df, min(200, len(df)-1)) if len(df) > 200 else pd.Series([None] * len(df))
     
     df['sma_200'] = calculate_sma(df, 200) if len(df) >= 200 else pd.Series([None] * len(df))
-    
     df['atr'] = calculate_atr(df)
 
     try: df['wt1'], df['wt2'] = calculate_wavetrend(df)
@@ -322,6 +558,10 @@ def analyze_stock(df, timeframe='daily'):
     last = df.iloc[-1]
     prev = df.iloc[-2] if len(df) > 1 else last
     avg_volume_5 = float(df['volume'].tail(5).mean()) if len(df) >= 5 else 0
+    current_price_val = float(last['close'])
+    
+    # 🆕 FIBONACCI ANALİZİ (Her timeframe için 90 mum)
+    fibonacci = calculate_fibonacci_analysis(df, current_price_val, lookback=90)
 
     def sf(value):
         if value is None: return None
@@ -344,11 +584,11 @@ def analyze_stock(df, timeframe='daily'):
         'bb_lower': sf(last['bb_lower']), 'bb_width': sf(last['bb_width']),
         
         'ema_5': sf(last['ema_5']), 'ema_22': sf(last['ema_22']),
-        'ema_20': sf(last['ema_20']),  # 🆕 EMA 20 (kesişim için)
+        'ema_20': sf(last['ema_20']),
         'ema_50': sf(last['ema_50']), 'ema_200': sf(last['ema_200']),
         'sma_200': sf(last['sma_200']),
         'prev_ema_5': sf(prev['ema_5']), 'prev_ema_22': sf(prev['ema_22']),
-        'prev_ema_20': sf(prev['ema_20']),  # 🆕 EMA 20 önceki
+        'prev_ema_20': sf(prev['ema_20']),
         'prev_ema_50': sf(prev['ema_50']), 'prev_ema_200': sf(prev['ema_200']),
         
         'wt1': sf(last['wt1']), 'wt2': sf(last['wt2']),
@@ -367,6 +607,9 @@ def analyze_stock(df, timeframe='daily'):
         'prev_close': sf(prev['close']),
         'candle_patterns': active_patterns, 'breakouts': breakouts,
         'support_resistance': sr_levels,
+        
+        # 🆕 FIBONACCI SONUÇLARI
+        'fibonacci': fibonacci,
     }
 
     result['momentum_status'] = detect_momentum_status(df, result)
@@ -402,4 +645,4 @@ def analyze_stock_4h(symbol):
 
 
 if __name__ == "__main__":
-    print("✅ Analyzer - EMA 5/22/50/200 + EMA 20 (20/50 kesişim için)")
+    print("✅ Analyzer v3 - EMA 5/22/50/200 + FIBONACCI (Normal + Extended)")
