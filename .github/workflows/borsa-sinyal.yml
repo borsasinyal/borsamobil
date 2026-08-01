@@ -12,15 +12,18 @@ on:
           - morning_preparation
           - premarket_report
           - market_open_scan
+          - full_scan_2h
           - full_scan
           - quick_scan
+          - hourly_scan
           - 4h_scan
+          - 4h_scan_evening
           - end_of_day_report
           - weekly_report
           - signal_tracker
           - full_scan_with_tracking
 
-# 🔑 Repo'ya yazma izni
+# 🔑 DB commit için repo yazma izni (KESİNLİKLE GEREKLİ)
 permissions:
   contents: write
 
@@ -30,6 +33,7 @@ jobs:
     timeout-minutes: 30
     
     steps:
+      # 🔑 Repo indir (DB dahil - checkout ile gelir)
       - name: Repo indir (DB dahil)
         uses: actions/checkout@v4
         with:
@@ -83,13 +87,27 @@ jobs:
           
           job_type = "${{ github.event.inputs.job_type }}"
           
-          # 4H TARAMASI - Veri çekme GEREKMEZ (TV'den direkt çeker)
+          # 4H TARAMALARI - Veri çekme GEREKMEZ (TV'den direkt çeker)
           if job_type == "4h_scan":
               print("=" * 60)
-              print("🕐 4 SAATLİK TARAMA (TV'den direkt)")
+              print("🕐 1. 4 SAATLİK TARAMA (14:00 - TV'den direkt)")
               print("=" * 60)
               from services.scheduler import job_4h_scan
               job_4h_scan()
+          
+          elif job_type == "4h_scan_evening":
+              print("=" * 60)
+              print("🕐 2. 4 SAATLİK TARAMA (18:15 - YARIN İÇİN)")
+              print("=" * 60)
+              from services.scheduler import job_4h_scan_evening
+              job_4h_scan_evening()
+          
+          elif job_type == "hourly_scan":
+              print("=" * 60)
+              print("⚡ SAATLİK TARAMA (MANUEL - Tavan Adayı)")
+              print("=" * 60)
+              from services.scheduler import job_hourly_scan
+              job_hourly_scan()
           
           # HAFTALIK RAPOR - Veri çekme gerekmez
           elif job_type == "weekly_report":
@@ -98,6 +116,14 @@ jobs:
               print("=" * 60)
               from services.scheduler import job_weekly_report
               job_weekly_report()
+          
+          # GÜN SONU RAPORU - Yahoo'dan çeker, veri gerekmez
+          elif job_type == "end_of_day_report":
+              print("=" * 60)
+              print("🌆 GÜN SONU RAPORU (5 MESAJ)")
+              print("=" * 60)
+              from services.scheduler import job_end_of_day_report
+              job_end_of_day_report()
           
           else:
               # DİĞER GÖREVLER - Önce veri çek
@@ -120,15 +146,15 @@ jobs:
               elif job_type == "market_open_scan":
                   from services.scheduler import job_market_open_scan
                   job_market_open_scan()
+              elif job_type == "full_scan_2h":
+                  from services.scheduler import job_full_scan_2h
+                  job_full_scan_2h()
               elif job_type == "full_scan":
                   from services.scheduler import job_full_scan
                   job_full_scan()
               elif job_type == "quick_scan":
                   from services.scheduler import job_quick_scan
                   job_quick_scan()
-              elif job_type == "end_of_day_report":
-                  from services.scheduler import job_end_of_day_report
-                  job_end_of_day_report()
               elif job_type == "full_scan_with_tracking":
                   from services.scheduler import job_full_scan_with_tracking
                   job_full_scan_with_tracking()
@@ -148,12 +174,14 @@ jobs:
         run: |
           python -c "from services.signal_tracker import track_signals_job; track_signals_job()"
       
-      # 🔑 DB'yi REPO'YA COMMIT ET (KALICI!)
-      - name: DB'yi repoya kaydet
+      # 🔑🔑🔑 DB KALICILIĞI - REPO'YA COMMIT (KESİNLİKLE ÇALIŞMALI)
+      - name: DB'yi repoya kaydet (KALICI)
         if: always()
         run: |
           if [ -f "borsa_sinyal.db" ]; then
             echo "📊 DB boyutu: $(du -h borsa_sinyal.db | cut -f1)"
+            echo "📋 DB detay:"
+            ls -lh borsa_sinyal.db
             
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -167,15 +195,24 @@ jobs:
               git commit -m "🤖 DB güncelleme: ${{ github.event.inputs.job_type }} - $(date '+%Y-%m-%d %H:%M')"
               
               # Push - conflict olursa 3 kez dene
+              PUSH_SUCCESS=false
               for i in 1 2 3; do
-                if git pull --rebase origin main && git push origin main; then
-                  echo "✅ DB repo'ya kaydedildi (deneme $i)"
-                  break
-                else
-                  echo "⚠️ Push başarısız, tekrar deneniyor... ($i/3)"
-                  sleep 3
+                echo "🔄 Push denemesi $i/3..."
+                if git pull --rebase origin main 2>/dev/null; then
+                  if git push origin main; then
+                    echo "✅ DB repo'ya kaydedildi (deneme $i)"
+                    PUSH_SUCCESS=true
+                    break
+                  fi
                 fi
+                echo "⚠️ Push başarısız, tekrar deneniyor..."
+                sleep 5
               done
+              
+              if [ "$PUSH_SUCCESS" = false ]; then
+                echo "❌❌❌ DB PUSH BAŞARISIZ! Sonraki taramada tekrar denenecek"
+                exit 0
+              fi
             fi
           else
             echo "⚠️ DB dosyası yok, commit atlanıyor"
